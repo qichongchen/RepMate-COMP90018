@@ -1,19 +1,30 @@
 package engine
 
 fun main() {
-    val reps = 10
-    val trace = syntheticSquatTrace(reps = reps)
+    val expectedReps = 10
+    val trace = syntheticSquatTrace(reps = expectedReps)
 
-    println("Generated a synthetic squat trace")
-    println("Ground-truth reps: $reps")
-    println("Total frames:      ${trace.size}  (expected ${reps} * 100 = ${reps * 100})")
-    println("Duration:          ${trace.last().tMillis / 1000.0} seconds")
+    println("Synthetic squat trace")
+    println("  frames:   ${trace.size}")
+    println("  duration: ${trace.last().tMillis / 1000.0} seconds")
     println()
-    println("First 3 frames:")
-    trace.take(3).forEach { println("  $it") }
+
+    val detector = SquatRepDetector()
+    val detected = detector.processAll(trace)
+
+    println("Detection")
+    println("  expected: $expectedReps reps")
+    println("  detected: ${detected.size} reps")
+    println("  result:   " + if (detected.size == expectedReps) "MATCH" else "MISMATCH")
+    println("  ending phase: ${detector.phase}")
     println()
-    println("Vertical acceleration (ay) across the first rep — should dip below 9.8 then rise above it:")
-    for (i in 0 until 100 step 12) {
-        println("  sample %3d: ay = %.2f".format(i, trace[i].ay))
+
+    println("Detected reps:")
+    detected.forEach { rep ->
+        val seconds = (rep.endMs - rep.startMs) / 1000.0
+        println(
+            "  rep %2d: %5d ms -> %5d ms  (%.2f s)  amplitude %.2f"
+                .format(rep.index + 1, rep.startMs, rep.endMs, seconds, rep.amplitude)
+        )
     }
 }
