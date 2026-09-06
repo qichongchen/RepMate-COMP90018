@@ -62,10 +62,14 @@ import kotlin.math.sqrt
  * - [lowThreshold] — how far it must fall to close the rep. Set *below* [highThreshold],
  *   not equal to it: that hysteresis gap is what stops one wobbly rep counting as three.
  * - [minRepDurationMs] — a rep window must stay open at least this long. Across the three
- *   recorded traces the shortest real rep is **615 ms** and the wobble we most need to
- *   reject is **501 ms**, so 600 ms sits inside that gap. Note how narrow that is: 620 ms
- *   already discards a genuine rep. This guard is deliberately not carrying the decision
- *   alone — see below.
+ *   recorded traces the wobble we most need to reject runs **501 ms** and the shortest
+ *   real rep runs **615 ms**, so the usable band is only 114 ms wide. 550 ms sits roughly
+ *   centred in it: **49 ms above** the wobble and **65 ms below** the shortest genuine rep.
+ *   The centring is the point. An earlier attempt at 600 ms also passed every trace, but
+ *   left just 15 ms of headroom — and 620 ms already discards a real rep. A rep a few per
+ *   cent quicker than the fastest recorded one would have been dropped silently, and a
+ *   miscount is the failure a user notices most. This guard is also deliberately not
+ *   carrying the decision alone — see below.
  * - [cooldownMs] — a new rep may not start until this long after the previous one ended,
  *   suppressing the rebound of a rep already counted. 500 ms rather than the 2000 ms this
  *   started at: see the conflation note below.
@@ -84,8 +88,8 @@ import kotlin.math.sqrt
  * Duration is therefore kept as a **second independent guard**. The 501 ms wobble that
  * motivated all this fails both: too short *and* too small. Neither guard has to be set
  * tightly enough to carry the decision by itself, which is the point — each has an
- * uncomfortable margin alone (15 ms for duration, 0.32 m/s^2 for amplitude), and together
- * they do not.
+ * narrow band to itself (114 ms for duration, 0.32 m/s^2 for amplitude), and neither has
+ * to sit near the edge of its own band to do the job.
  *
  * ## Why the cooldown dropped from 2000 ms to 500 ms
  * [cooldownMs] was silently doing two jobs: suppressing rebound, and — as a side effect of
@@ -114,8 +118,8 @@ import kotlin.math.sqrt
  *   tuned on a real 10-squat pocket recording.
  * @param lowThreshold m/s^2 the smoothed magnitude must fall under to close a rep. Default
  *   9.7, just below resting gravity.
- * @param minRepDurationMs minimum open-to-close time for a rep to count. Default 600 ms,
- *   between a 501 ms wobble and the shortest real rep at 615 ms.
+ * @param minRepDurationMs minimum open-to-close time for a rep to count. Default 550 ms,
+ *   roughly centred between a 501 ms wobble and the shortest real rep at 615 ms.
  * @param cooldownMs minimum quiet time between the end of one counted rep and the start of
  *   the next. Default 500 ms, leaving headroom above the fastest recorded gap of 917 ms.
  * @param minAmplitude minimum peak-to-peak swing of the smoothed magnitude, in m/s^2, for a
@@ -125,7 +129,7 @@ import kotlin.math.sqrt
 class SquatRepDetector(
     private val highThreshold: Float = 10.15f,
     private val lowThreshold: Float = 9.7f,
-    private val minRepDurationMs: Long = 600L,
+    private val minRepDurationMs: Long = 550L,
     private val cooldownMs: Long = 500L,
     private val minAmplitude: Float = 0.75f,
     private val smoothingWindow: Int = 25

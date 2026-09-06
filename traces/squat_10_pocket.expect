@@ -25,4 +25,4 @@ fullTraceEvents = 12
 quietStartMs = 54000
 quietEndMs = 62000
 
-notes = First recording. Contributes the shortest real rep in the set (615 ms), which is what fixes the lower bound on minRepDurationMs.
+notes = First recording. Contributes the shortest real rep of the three traces (615 ms), which is what caps minRepDurationMs from above.
