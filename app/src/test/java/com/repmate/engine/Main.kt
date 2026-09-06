@@ -7,6 +7,11 @@ package com.repmate.engine
  * Iterating the whole library rather than one hard-coded file means a newly recorded trace
  * can be eyeballed the moment it is dropped in, with no code change — the same property
  * the test suite relies on.
+ *
+ * Lives in the **test** source set, alongside the fixtures it reads. It is a developer
+ * tool, not part of the app: a JVM `main` cannot run on a device, and the recordings it
+ * loads are test resources. Keeping it here means none of it ships in the APK. Run it
+ * from the IDE with the gutter arrow.
  */
 fun main() {
     val traces = runCatching { TraceLibrary.loadAll() }
