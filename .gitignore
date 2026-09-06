@@ -30,3 +30,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Project libraries ###
+# IntelliJ copies Maven-resolved jars here; they are re-downloadable from the
+# coordinates recorded in .idea/libraries/, so they do not belong in git.
+lib/
