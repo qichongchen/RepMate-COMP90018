@@ -3,79 +3,111 @@ package engine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import java.io.File
 
 /**
- * Replay tests for [SquatRepDetector] and [parseSensorLoggerCsv].
+ * Replay tests for [SquatRepDetector], [parseSensorLoggerCsv] and [parseTraceExpectation].
  *
- * These are **replay tests**: the recording was made once on a real phone, and every
- * assertion below re-runs the detector over that fixed trace. That is what makes the
- * thresholds in [SquatRepDetector] defensible — if someone retunes them and the count
- * changes, this suite says so immediately.
+ * These are **replay tests**: recordings are made once on a real phone and every assertion
+ * re-runs the detector over them. That is what makes the thresholds in [SquatRepDetector]
+ * defensible — retune them and this suite says immediately what it cost.
  *
- * Pure JVM: no `android.*` anywhere, so these run in plain unit tests with no emulator.
+ * ## Adding a recording
+ * Drop `my_trace.csv` and `my_trace.expect` into `traces/`. Nothing here changes: every
+ * test below iterates [TraceLibrary.loadAll], so a new recording is picked up
+ * automatically and its ground truth comes from its own `.expect` file. Thresholds tuned
+ * against one person at one pace are a guess until other recordings agree, so adding them
+ * has to be cheap.
+ *
+ * ## Why the loops aggregate instead of failing fast
+ * Each test collects every trace's failure and reports them together. With one recording
+ * that is the same thing; with five, one bad trace failing fast would hide the other four,
+ * and "which recordings disagree" is exactly the question when retuning.
+ *
+ * Pure JVM: no `android.*` anywhere, so these need no emulator.
  */
 class RepDetectorTest {
 
+    private val traces get() = loadedTraces
+
     /**
-     * Candidate paths for the recorded trace, tried in order.
+     * Runs [check] against every trace and fails once, naming every trace that disagreed.
      *
-     * Mirrors the lookup in `Main.kt`: the file currently lives at the repo root, but
-     * `traces/` is where it belongs long term, and a test runner's working directory is
-     * not guaranteed. Checking both keeps the suite green either way.
+     * @param what label for the property under test, used in the failure message.
+     * @param check returns null when the trace passes, or a description of the problem.
      */
-    private val traceCandidates = listOf(
-        "traces/squat_10_pocket.csv",
-        "squat_10_pocket.csv"
-    )
-
-    /** Loads the recorded trace, failing with a useful message if it cannot be found. */
-    private fun realTrace(): List<MotionFrame> {
-        val path = traceCandidates.firstOrNull { File(it).isFile }
+    private fun eachTrace(what: String, check: (LabelledTrace) -> String?) {
+        val failures = traces.mapNotNull { trace -> check(trace)?.let { "  ${trace.name}: $it" } }
         assertTrue(
-            path != null,
-            "Recorded trace not found. Looked in: " +
-                traceCandidates.joinToString { File(it).absolutePath }
+            failures.isEmpty(),
+            "$what failed for ${failures.size} of ${traces.size} trace(s):\n" +
+                failures.joinToString("\n")
         )
-        return loadSensorLoggerCsv(path)
     }
 
     @Test
-    fun `real recording yields twelve rep events`() {
-        val trace = realTrace()
-
-        val detected = SquatRepDetector().processAll(trace)
-
-        // 12, not 10, and that is the correct answer for this recording.
-        //
-        // The human performed 10 squats, and those are events 2..11 — a tidy run from
-        // ~12.7 s to ~53.6 s at a steady ~4-5 s cadence. The two extras are phone
-        // handling, one at each end of the recording: event 1 at ~3.5 s is the phone
-        // being pushed into the pocket after the recording was started, and event 12 at
-        // ~63.2 s is it being pulled back out to stop the recording. Both are genuine
-        // movement bursts that clear every guard, so a magnitude-based detector counts
-        // them; nothing in the signal marks them as "not a squat".
-        //
-        // Stripping them is a session-boundary problem (trim before the first rep and
-        // after the last), not a detector-threshold problem — so this test pins what the
-        // detector actually sees, and does not pretend the guards can tell the
-        // difference. The ~9.1 s gap before the last event is the tell: see the
-        // rest-between-reps output in Main.kt.
-        assertEquals(12, detected.size, "expected 10 squats plus 2 phone-handling bursts")
+    fun `trace library finds recordings and every one has ground truth`() {
+        // Guards the suite against quietly passing on nothing: if traces/ went missing or
+        // a recording lost its .expect file, every other test here would iterate an empty
+        // list and report success. TraceLibrary.loadAll throws on a missing companion
+        // file, so simply calling it is most of this assertion.
+        assertTrue(traces.isNotEmpty(), "traces/ contained no recordings")
     }
 
     @Test
-    fun `still period in the middle of the recording produces no reps`() {
-        // 54-62 s is the rest after the last squat (which ends at ~53.6 s) and before the
-        // phone is retrieved (~63.2 s): the phone is sitting still in a pocket. This is
-        // the false-positive guard — a resting phone reads ~9.81 m/s^2 of gravity, which
-        // must never climb past the 10.15 highThreshold.
-        val quiet = realTrace().filter { it.tMillis in 54_000L..62_000L }
-        assertTrue(quiet.isNotEmpty(), "quiet window should contain frames")
+    fun `each trace detects its ground-truth rep count inside the set window`() {
+        // The honest headline number: within the window where the human actually
+        // performed the set, does the count match what they did? Phone handling before
+        // and after the set is excluded by the window, so this is not flattered by it.
+        eachTrace("ground-truth rep count") { trace ->
+            val detected = SquatRepDetector().processAll(trace.setWindow()).size
+            if (trace.expectation.acceptsRepCount(detected)) {
+                null
+            } else {
+                "expected ${trace.expectation.acceptedRangeDescription()} reps in " +
+                    "${trace.expectation.setStartMs}-${trace.expectation.setEndMs} ms, detected $detected"
+            }
+        }
+    }
 
-        val detected = SquatRepDetector().processAll(quiet)
+    @Test
+    fun `each trace reproduces its recorded whole-recording event count`() {
+        // The other half of the story: what the detector sees across the raw file,
+        // handling artifacts included. For squat_10_pocket that is 12, not 10 — the 10
+        // squats plus a phone-into-pocket burst and a phone-out-of-pocket burst. Pinning
+        // it means a threshold change cannot quietly alter what the raw signal yields.
+        eachTrace("whole-recording event count") { trace ->
+            val expected = trace.expectation.fullTraceEvents ?: return@eachTrace null
+            val detected = SquatRepDetector().processAll(trace.frames).size
+            if (detected == expected) {
+                null
+            } else {
+                "expected $expected events over the whole recording, detected $detected"
+            }
+        }
+    }
 
-        assertEquals(0, detected.size, "a still phone must not produce reps")
+    @Test
+    fun `declared quiet windows produce no reps`() {
+        // False-positive check. A phone lying still reads roughly gravity (~9.81 m/s^2),
+        // which must never cross the 10.15 high threshold.
+        eachTrace("quiet window") { trace ->
+            val quiet = trace.quietWindow() ?: return@eachTrace null
+            if (quiet.isEmpty()) return@eachTrace "declared a quiet window containing no frames"
+            val detected = SquatRepDetector().processAll(quiet).size
+            if (detected == 0) null else "a still phone produced $detected rep(s)"
+        }
+    }
+
+    @Test
+    fun `detection is deterministic across detector instances`() {
+        // Determinism is a hard requirement: the same trace must always yield the same
+        // reps, or replay-tuned thresholds mean nothing. RepEvent is a data class, so this
+        // compares index, start, end and amplitude field by field.
+        eachTrace("determinism") { trace ->
+            val first = SquatRepDetector().processAll(trace.frames)
+            val second = SquatRepDetector().processAll(trace.frames)
+            if (first == second) null else "two instances disagreed: ${first.size} vs ${second.size} reps"
+        }
     }
 
     @Test
@@ -109,25 +141,12 @@ class RepDetectorTest {
     }
 
     @Test
-    fun `two detector instances produce identical results for the same trace`() {
-        // Determinism is a hard requirement: the same trace must always yield the same
-        // reps, or replay-tuned thresholds mean nothing. RepEvent is a data class, so
-        // this compares index, start, end and amplitude field by field.
-        val trace = realTrace()
-
-        val first = SquatRepDetector().processAll(trace)
-        val second = SquatRepDetector().processAll(trace)
-
-        assertEquals(first, second, "detection must be deterministic across instances")
-    }
-
-    @Test
     fun `csv columns are resolved by header name not by position`() {
-        // Sensor Logger writes its axes in the order z,y,x — reversed. A positional
-        // parser reading "cell 2 is x" would silently swap the axes and every magnitude
-        // computed downstream would still look plausible, which is what makes this bug
-        // nasty. This literal CSV pins the mapping: if the parser ever regresses to
-        // positional reading, ax and az swap and the assertions below fail.
+        // Sensor Logger writes its axes in the order z,y,x — reversed. A positional parser
+        // reading "cell 2 is x" would silently swap the axes and every magnitude computed
+        // downstream would still look plausible, which is what makes this bug nasty. This
+        // literal CSV pins the mapping: if the parser ever regresses to positional
+        // reading, ax and az swap and the assertions below fail.
         val csv = listOf(
             "time,seconds_elapsed,z,y,x",
             "1788594189329554400,1.5,3.0,2.0,1.0",
@@ -153,5 +172,44 @@ class RepDetectorTest {
         assertEquals(0f, frames[0].gx)
         assertEquals(0f, frames[0].gy)
         assertEquals(0f, frames[0].gz)
+    }
+
+    @Test
+    fun `expectation parser rejects an unknown key`() {
+        // A typo'd key such as 'fullTraceEvent' would otherwise be ignored, switching off
+        // an assertion while the suite stayed green — the worst way for a fixture to fail.
+        // So the parser rejects anything it does not recognise, and this pins that.
+        val lines = listOf(
+            "exercise = SQUAT",
+            "reps = 10",
+            "setStartMs = 0",
+            "setEndMs = 1000",
+            "fullTraceEvent = 12" // note the missing 's'
+        )
+
+        val message = messageFromFailure { parseTraceExpectation(lines) }
+
+        assertTrue(
+            message.contains("unknown key"),
+            "expected an 'unknown key' complaint, got: $message"
+        )
+    }
+
+    /** Runs [block] and returns the message of the exception it throws; fails if it succeeds. */
+    private fun messageFromFailure(block: () -> Unit): String {
+        val thrown = runCatching(block).exceptionOrNull()
+        assertTrue(thrown != null, "expected the call to fail, but it succeeded")
+        return thrown.message.orEmpty()
+    }
+
+    companion object {
+        /**
+         * Loaded once for the whole class rather than per test.
+         *
+         * JUnit constructs a fresh test instance for every method, so a per-instance load
+         * would re-parse every CSV eight times — 6500 rows each today, and more with every
+         * recording added.
+         */
+        private val loadedTraces: List<LabelledTrace> by lazy { TraceLibrary.loadAll() }
     }
 }

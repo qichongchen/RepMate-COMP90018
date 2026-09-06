@@ -1,68 +1,80 @@
 package engine
 
-import java.io.File
-
 /**
- * Candidate locations for the recorded trace, tried in order.
+ * Developer entry point: runs [SquatRepDetector] over every recording in `traces/` and
+ * prints what it found against what the human says they did.
  *
- * The IDE runs `main` from the project root, but a terminal run may start elsewhere, and
- * the file currently lives at the repo root rather than in `traces/`. Checking both keeps
- * the demo runnable either way.
+ * Iterating the whole library rather than one hard-coded file means a newly recorded trace
+ * can be eyeballed the moment it is dropped in, with no code change — the same property
+ * the test suite relies on.
  */
-private val TRACE_CANDIDATES = listOf(
-    "traces/squat_10_pocket.csv",
-    "squat_10_pocket.csv"
-)
-
 fun main() {
-    val tracePath = TRACE_CANDIDATES.firstOrNull { File(it).isFile }
-    if (tracePath == null) {
-        println("Could not find the recorded trace. Looked in:")
-        TRACE_CANDIDATES.forEach { println("  ${File(it).absolutePath}") }
+    val traces = runCatching { TraceLibrary.loadAll() }
+        .getOrElse { failure ->
+            println("Could not load traces: ${failure.message}")
+            return
+        }
+
+    if (traces.isEmpty()) {
+        println("No recordings found in ${TraceLibrary.directory()?.absolutePath}")
         return
     }
 
-    val trace = loadSensorLoggerCsv(tracePath)
-    if (trace.isEmpty()) {
-        println("Loaded $tracePath but it contained no usable rows.")
-        return
-    }
+    println("Found ${traces.size} recording(s)\n")
+    traces.forEach { report(it) }
+}
 
-    val durationSeconds = trace.last().tMillis / 1000.0
-    val sampleRateHz = trace.size / durationSeconds
+/** Prints one trace's detection report: the set window, the whole file, and rep timings. */
+private fun report(trace: LabelledTrace) {
+    val expectation = trace.expectation
 
-    println("Real squat trace: $tracePath")
-    println("  frames:      ${trace.size}")
-    println("  duration:    %.2f s".format(durationSeconds))
-    println("  sample rate: ~%.0f Hz".format(sampleRateHz))
+    println("=".repeat(72))
+    println("${trace.name}  (${expectation.exercise})")
+    println(
+        "  frames: %d   duration: %.2f s   sample rate: ~%.0f Hz"
+            .format(trace.frames.size, trace.durationSeconds(), trace.sampleRateHz())
+    )
+    expectation.notes?.let { println("  notes:  $it") }
     println()
 
-    // The human performed 10 squats; roughly 9 were expected to be cleanly detectable.
-    val actualSquats = 10
-    val detector = SquatRepDetector()
-    val detected = detector.processAll(trace)
+    // The honest number: reps found in the window where the set actually happened.
+    val inSet = SquatRepDetector().processAll(trace.setWindow())
+    println(
+        "  set window %d-%d ms: detected %d, ground truth %s"
+            .format(
+                expectation.setStartMs,
+                expectation.setEndMs,
+                inSet.size,
+                expectation.acceptedRangeDescription()
+            )
+    )
 
-    println("Detection (acceleration magnitude, 25-sample moving average)")
-    println("  squats performed: $actualSquats")
-    println("  reps detected:    ${detected.size}")
-    println("  ending phase:     ${detector.phase}")
+    // The whole file, including any phone handling at either end.
+    val whole = SquatRepDetector().processAll(trace.frames)
+    val expectedWhole = expectation.fullTraceEvents?.toString() ?: "not recorded"
+    println("  whole recording:      detected ${whole.size}, expected $expectedWhole")
     println()
 
-    println("Detected reps:")
-    detected.forEach { rep ->
+    println("  events across the whole recording:")
+    whole.forEach { rep ->
         val seconds = (rep.endMs - rep.startMs) / 1000.0
+        val inWindow = rep.startMs >= expectation.setStartMs && rep.endMs <= expectation.setEndMs
         println(
-            "  rep %2d: %6d ms -> %6d ms  (%.2f s)  amplitude %.2f"
-                .format(rep.index + 1, rep.startMs, rep.endMs, seconds, rep.amplitude)
+            "    %2d: %6d -> %6d ms  (%.2f s)  amplitude %.2f  %s"
+                .format(rep.index + 1, rep.startMs, rep.endMs, seconds, rep.amplitude, if (inWindow) "" else "<- outside the set")
         )
     }
     println()
 
-    // Gap between one rep ending and the next starting. Real squats in a set land at a
-    // steady cadence, so an unusually long gap flags a detection that is probably not a
-    // squat at all (e.g. the phone going into or out of the pocket).
-    println("Rest between reps:")
-    detected.zipWithNext { previous, next ->
-        println("  rep %2d -> %2d: %.2f s".format(previous.index + 1, next.index + 1, (next.startMs - previous.endMs) / 1000.0))
+    // Gap between one event ending and the next starting. Real reps in a set land at a
+    // steady cadence, so an unusually long gap flags something that is probably not a rep
+    // at all — typically the phone going into or out of a pocket.
+    println("  rest between events:")
+    whole.zipWithNext { previous, next ->
+        println(
+            "    %2d -> %2d: %.2f s"
+                .format(previous.index + 1, next.index + 1, (next.startMs - previous.endMs) / 1000.0)
+        )
     }
+    println()
 }
