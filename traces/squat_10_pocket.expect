@@ -25,4 +25,4 @@ fullTraceEvents = 12
 quietStartMs = 54000
 quietEndMs = 62000
 
-notes = First recording. Contributes the shortest real rep of the three traces (615 ms), which is what caps minRepDurationMs from above.
+notes = participant: Mohit (normal pace, 4-5s cadence). First recording. Contributes the shortest real rep of the three traces (615 ms), which is what caps minRepDurationMs from above.

@@ -8,7 +8,7 @@
 # reps are plainly in the signal and clear every other guard.
 #
 # It also showed that no single cooldown value could work. This set needs 900 ms or less;
-# squat_10_teammate needs 1000 ms or more to keep a 0.60-amplitude wobble out. Those
+# squat_10_hit needs 1000 ms or more to keep a 0.60-amplitude wobble out. Those
 # requirements do not overlap, so the fix was to split the cooldown's two jobs -- rebound
 # suppression stays with cooldownMs, wobble rejection moved to minAmplitude and
 # minRepDurationMs -- rather than to search harder for a number.
@@ -32,4 +32,4 @@ fullTraceEvents = 12
 
 # No still period was recorded on this trace, so it declares no quiet window.
 
-notes = Pixel, ~99Hz, front pocket, ~1.9s per rep. The trace that exposed the cooldown conflation.
+notes = participant: Mohit (fast pace, ~1.9s per rep). Pixel, ~99Hz, front pocket. The trace that exposed the cooldown conflation.

@@ -1,0 +1,24 @@
+# Ground truth for squat_10_hit.csv
+#
+# Second recording, and the first from a different person and a different phone.
+#
+# This trace sets both ends of the amplitude band. Hit's softest real rep swings 0.92 and
+# the recording contains the 0.60-amplitude, 501 ms wobble at ~63.8 s that minAmplitude
+# and minRepDurationMs exist to reject. The whole amplitude floor currently rests on this
+# one participant, which is why duration is kept as a second independent guard.
+
+exercise = SQUAT
+
+# 10 squats at a faster ~3 s cadence than the baseline recording's 4-5 s.
+reps = 10
+setStartMs = 55000
+setEndMs = 102000
+
+fullTraceEvents = 13
+
+# Hit stood still for roughly the first 55 s of the recording, so this stretch is a
+# false-positive check on real data rather than on a synthetic still period.
+quietStartMs = 15000
+quietEndMs = 50000
+
+notes = participant: Hit (~3s cadence). Samsung SM-S936B, ~58Hz, right front pocket. Softest reps of the three traces; sets both ends of the amplitude band.

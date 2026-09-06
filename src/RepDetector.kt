@@ -62,9 +62,10 @@ import kotlin.math.sqrt
  * - [lowThreshold] — how far it must fall to close the rep. Set *below* [highThreshold],
  *   not equal to it: that hysteresis gap is what stops one wobbly rep counting as three.
  * - [minRepDurationMs] — a rep window must stay open at least this long. Across the three
- *   recorded traces the wobble we most need to reject runs **501 ms** and the shortest
- *   real rep runs **615 ms**, so the usable band is only 114 ms wide. 550 ms sits roughly
- *   centred in it: **49 ms above** the wobble and **65 ms below** the shortest genuine rep.
+ *   recorded traces the wobble we most need to reject runs **501 ms** (Hit) and the
+ *   shortest real rep runs **615 ms** (Mohit), so the usable band is only 114 ms wide.
+ *   550 ms sits roughly centred in it: **49 ms above** the wobble and **65 ms below**
+ *   the shortest genuine rep.
  *   The centring is the point. An earlier attempt at 600 ms also passed every trace, but
  *   left just 15 ms of headroom — and 620 ms already discards a real rep. A rep a few per
  *   cent quicker than the fastest recorded one would have been dropped silently, and a
@@ -75,21 +76,22 @@ import kotlin.math.sqrt
  *   started at: see the conflation note below.
  * - [minAmplitude] — the smoothed magnitude must swing at least this far, peak to peak,
  *   across the rep window. A real squat moves the body; a wobble barely moves the signal.
- *   Across the traces the softest real rep swings **0.92** and the largest non-rep inside
- *   a set swings **0.60**, with an unrelated drift window in a second trace at **0.63**;
- *   0.75 sits near the middle of that band.
+ *   Both ends of the band come from Hit's recording: his softest real rep swings **0.92**
+ *   and the largest non-rep inside a set swings **0.60**, with an unrelated drift window
+ *   in Mohit's normal-pace trace at **0.63**; 0.75 sits near the middle of that band.
  *
  * ## Why amplitude and duration are two guards and not one
- * The amplitude floor rests on thin evidence: **one participant's softest rep** (0.92)
- * against non-reps at 0.60 and 0.63. Amplitude is also the most person-dependent quantity
- * here — the softest real rep ranges 0.92 to 2.92 across three people, a 3.2x spread — so
- * an absolute floor chosen from one soft-repping participant may not hold for a fourth.
+ * The amplitude floor rests on thin evidence: **Hit's softest rep** (0.92) against non-reps
+ * at 0.60 and 0.63. Every constraint on it comes from that one participant. Amplitude is
+ * also the most person-dependent quantity here — the softest real rep ranges 0.92 (Hit) to
+ * 2.92 (Mohit, fast) across three recordings, a 3.2x spread — so a floor chosen from one
+ * soft-repping participant may not hold for a fourth.
  *
- * Duration is therefore kept as a **second independent guard**. The 501 ms wobble that
- * motivated all this fails both: too short *and* too small. Neither guard has to be set
- * tightly enough to carry the decision by itself, which is the point — each has an
- * narrow band to itself (114 ms for duration, 0.32 m/s^2 for amplitude), and neither has
- * to sit near the edge of its own band to do the job.
+ * Duration is therefore kept as a **second independent guard**. The 501 ms wobble in
+ * Hit's recording that motivated all this fails both tests: too short *and* too small.
+ * That redundancy is the point. Each guard has only a narrow band to work in — 114 ms
+ * for duration, 0.32 m/s^2 for amplitude — but because the two are independent, neither
+ * has to sit near the edge of its band to do the job.
  *
  * ## Why the cooldown dropped from 2000 ms to 500 ms
  * [cooldownMs] was silently doing two jobs: suppressing rebound, and — as a side effect of
@@ -97,8 +99,8 @@ import kotlin.math.sqrt
  * invisible until someone squats quickly. On a ~1.9 s-per-rep set, a 2000 ms cooldown
  * discards genuine reps that begin under 2 s after the previous one ended: it found 5 of
  * 10. No single cooldown value fixed it — the fast set needs 900 ms or less, while a
- * second participant's trace needs 1000 ms or more to keep a wobble out, and those two
- * requirements do not overlap.
+ * Hit's trace needs 1000 ms or more to keep a wobble out, and those two requirements do
+ * not overlap.
  *
  * The fix was to split the jobs rather than to retune the number. With [minAmplitude]
  * rejecting wobbles on their merits, the cooldown is free to be only what its name says.
