@@ -1,0 +1,28 @@
+# Ground truth for squat_10_pocket.csv
+#
+# Recorded with the Sensor Logger app, phone in a trouser pocket, Total Acceleration
+# export at ~99 Hz. One person, one pace. This was the first recording, and the
+# detector's original thresholds were tuned against it alone; they are now set from
+# all three traces together.
+
+exercise = SQUAT
+
+# 10 squats were performed, all inside the window below, at a steady 4-5 s cadence.
+reps = 10
+setStartMs = 12000
+setEndMs = 54000
+tolerance = 0
+
+# Over the whole recording the detector sees 12 events: the 10 squats plus two
+# phone-handling bursts, one at ~3.5 s (phone going into the pocket after the recording
+# was started) and one at ~63.2 s (phone coming back out to stop it). Both clear every
+# guard and are genuine movement; excluding them is a session-trimming job, not a
+# threshold job.
+fullTraceEvents = 12
+
+# After the last squat ends (~53.6 s) and before the phone is retrieved (~63.2 s) it lies
+# still in the pocket. Nothing may be detected here.
+quietStartMs = 54000
+quietEndMs = 62000
+
+notes = participant: Mohit (normal pace, 4-5s cadence). First recording. Contributes the shortest real rep of the three traces (615 ms), which is what caps minRepDurationMs from above.
