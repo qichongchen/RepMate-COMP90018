@@ -61,12 +61,45 @@ import kotlin.math.sqrt
  *   pocket never does.
  * - [lowThreshold] — how far it must fall to close the rep. Set *below* [highThreshold],
  *   not equal to it: that hysteresis gap is what stops one wobbly rep counting as three.
- * - [minRepDurationMs] — a rep must stay open at least this long. A squat takes roughly
- *   0.6 to 1.1 s in this trace; a footstep, a bump, or the phone settling in the pocket
- *   spikes and clears in well under half a second.
- * - [cooldownMs] — a new rep may not start until this long after the previous one ended.
- *   Humans do not squat twice in two seconds; this suppresses the rebound wobble that
- *   follows a rep already counted.
+ * - [minRepDurationMs] — a rep window must stay open at least this long. Across the three
+ *   recorded traces the shortest real rep is **615 ms** and the wobble we most need to
+ *   reject is **501 ms**, so 600 ms sits inside that gap. Note how narrow that is: 620 ms
+ *   already discards a genuine rep. This guard is deliberately not carrying the decision
+ *   alone — see below.
+ * - [cooldownMs] — a new rep may not start until this long after the previous one ended,
+ *   suppressing the rebound of a rep already counted. 500 ms rather than the 2000 ms this
+ *   started at: see the conflation note below.
+ * - [minAmplitude] — the smoothed magnitude must swing at least this far, peak to peak,
+ *   across the rep window. A real squat moves the body; a wobble barely moves the signal.
+ *   Across the traces the softest real rep swings **0.92** and the largest non-rep inside
+ *   a set swings **0.60**, with an unrelated drift window in a second trace at **0.63**;
+ *   0.75 sits near the middle of that band.
+ *
+ * ## Why amplitude and duration are two guards and not one
+ * The amplitude floor rests on thin evidence: **one participant's softest rep** (0.92)
+ * against non-reps at 0.60 and 0.63. Amplitude is also the most person-dependent quantity
+ * here — the softest real rep ranges 0.92 to 2.92 across three people, a 3.2x spread — so
+ * an absolute floor chosen from one soft-repping participant may not hold for a fourth.
+ *
+ * Duration is therefore kept as a **second independent guard**. The 501 ms wobble that
+ * motivated all this fails both: too short *and* too small. Neither guard has to be set
+ * tightly enough to carry the decision by itself, which is the point — each has an
+ * uncomfortable margin alone (15 ms for duration, 0.32 m/s^2 for amplitude), and together
+ * they do not.
+ *
+ * ## Why the cooldown dropped from 2000 ms to 500 ms
+ * [cooldownMs] was silently doing two jobs: suppressing rebound, and — as a side effect of
+ * being long — swallowing small wobbles that no other guard rejected. That conflation is
+ * invisible until someone squats quickly. On a ~1.9 s-per-rep set, a 2000 ms cooldown
+ * discards genuine reps that begin under 2 s after the previous one ended: it found 5 of
+ * 10. No single cooldown value fixed it — the fast set needs 900 ms or less, while a
+ * second participant's trace needs 1000 ms or more to keep a wobble out, and those two
+ * requirements do not overlap.
+ *
+ * The fix was to split the jobs rather than to retune the number. With [minAmplitude]
+ * rejecting wobbles on their merits, the cooldown is free to be only what its name says.
+ * 500 ms rather than 900 ms because 900 leaves no headroom above the fast set's tightest
+ * genuine gap of **917 ms** — anyone quicker would break it again.
  *
  * ## Timing and amplitude
  * `startMs` is the timestamp of the frame that crossed [highThreshold]; `endMs` is the frame
@@ -81,21 +114,26 @@ import kotlin.math.sqrt
  *   tuned on a real 10-squat pocket recording.
  * @param lowThreshold m/s^2 the smoothed magnitude must fall under to close a rep. Default
  *   9.7, just below resting gravity.
- * @param minRepDurationMs minimum open-to-close time for a rep to count. Default 500 ms.
+ * @param minRepDurationMs minimum open-to-close time for a rep to count. Default 600 ms,
+ *   between a 501 ms wobble and the shortest real rep at 615 ms.
  * @param cooldownMs minimum quiet time between the end of one counted rep and the start of
- *   the next. Default 2000 ms.
+ *   the next. Default 500 ms, leaving headroom above the fastest recorded gap of 917 ms.
+ * @param minAmplitude minimum peak-to-peak swing of the smoothed magnitude, in m/s^2, for a
+ *   rep to count. Default 0.75, between a 0.60 non-rep and a 0.92 real rep.
  * @param smoothingWindow samples in the moving-average filter. Default 25 (~250 ms at 100 Hz).
  */
 class SquatRepDetector(
     private val highThreshold: Float = 10.15f,
     private val lowThreshold: Float = 9.7f,
-    private val minRepDurationMs: Long = 500L,
-    private val cooldownMs: Long = 2000L,
+    private val minRepDurationMs: Long = 600L,
+    private val cooldownMs: Long = 500L,
+    private val minAmplitude: Float = 0.75f,
     private val smoothingWindow: Int = 25
 ) {
 
     init {
         require(smoothingWindow >= 1) { "smoothingWindow must be at least 1" }
+        require(minAmplitude >= 0f) { "minAmplitude cannot be negative" }
         require(lowThreshold < highThreshold) {
             "lowThreshold ($lowThreshold) must sit below highThreshold ($highThreshold) " +
                 "so the two form a hysteresis gap"
@@ -214,12 +252,18 @@ class SquatRepDetector(
     }
 
     /**
-     * Applies the duration and cooldown guards to the rep window that just closed.
+     * Applies the duration, amplitude and cooldown guards to the rep window that just closed.
+     *
+     * A rejected window deliberately leaves [lastRepEndMs] untouched: a window that was not
+     * a rep must not start the cooldown for the rep that follows it.
      *
      * @return the recorded [RepEvent], or `null` if a guard rejected the window.
      */
     private fun closeRepWindow(endMs: Long): RepEvent? {
         if (endMs - repStartMs < minRepDurationMs) return null // too brief to be a squat
+
+        val amplitude = maxSmoothed - minSmoothed
+        if (amplitude < minAmplitude) return null // too small a swing to be a rep
 
         val previousEnd = lastRepEndMs
         if (previousEnd != null && repStartMs - previousEnd < cooldownMs) {
@@ -230,7 +274,7 @@ class SquatRepDetector(
             index = _reps.size,
             startMs = repStartMs,
             endMs = endMs,
-            amplitude = maxSmoothed - minSmoothed
+            amplitude = amplitude
         )
         _reps += event
         lastRepEndMs = endMs

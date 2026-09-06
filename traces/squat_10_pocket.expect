@@ -1,8 +1,9 @@
 # Ground truth for squat_10_pocket.csv
 #
 # Recorded with the Sensor Logger app, phone in a trouser pocket, Total Acceleration
-# export at ~99 Hz. One person, one pace. The detector's thresholds were tuned against
-# this recording, so it is the baseline every other trace is compared to.
+# export at ~99 Hz. One person, one pace. This was the first recording, and the
+# detector's original thresholds were tuned against it alone; they are now set from
+# all three traces together.
 
 exercise = SQUAT
 
@@ -24,4 +25,4 @@ fullTraceEvents = 12
 quietStartMs = 54000
 quietEndMs = 62000
 
-notes = Baseline recording; thresholds in SquatRepDetector are tuned to it.
+notes = First recording. Contributes the shortest real rep in the set (615 ms), which is what fixes the lower bound on minRepDurationMs.

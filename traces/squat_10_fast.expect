@@ -1,0 +1,35 @@
+# Ground truth for squat_10_fast.csv
+#
+# 10 squats at a deliberately quick pace, front pocket, Pixel, ~99 Hz.
+#
+# This is the trace that exposed the cooldown conflation. With the original
+# cooldownMs = 2000 the detector found 5 of these 10 reps: at a ~1.9 s cadence most reps
+# begin less than 2 s after the previous one ended, and were discarded as rebound. The
+# reps are plainly in the signal and clear every other guard.
+#
+# It also showed that no single cooldown value could work. This set needs 900 ms or less;
+# squat_10_teammate needs 1000 ms or more to keep a 0.60-amplitude wobble out. Those
+# requirements do not overlap, so the fix was to split the cooldown's two jobs -- rebound
+# suppression stays with cooldownMs, wobble rejection moved to minAmplitude and
+# minRepDurationMs -- rather than to search harder for a number.
+
+exercise = SQUAT
+
+# Set boundaries read from the signal, not estimated. The 10 squats run 8628 -> 27376 ms
+# at a 1.7-2.2 s start-to-start cadence. Before them: handling bursts ending at 3822 ms,
+# leaving a 4.8 s gap. After them: a settling burst starting at 27789 ms, leaving only a
+# 413 ms gap -- hence the unrounded upper bound. The count is insensitive to both bounds;
+# anything from 4000-27700 inwards yields the same 10 reps.
+reps = 10
+setStartMs = 6000
+setEndMs = 27500
+tolerance = 0
+
+# 10 reps plus two handling artifacts: the phone going into the pocket at ~1.9 s and
+# coming back out at ~30.5 s. Both are large movements that no guard rejects, and neither
+# is meant to be rejected -- excluding them is a session-trimming job.
+fullTraceEvents = 12
+
+# No still period was recorded on this trace, so it declares no quiet window.
+
+notes = Pixel, ~99Hz, front pocket, ~1.9s per rep. The trace that exposed the cooldown conflation.
