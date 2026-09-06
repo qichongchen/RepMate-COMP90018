@@ -1,0 +1,21 @@
+# Ground truth for squat_10_teammate.csv
+#
+# Second recording, and the first from a different person and a different phone. The
+# thresholds in SquatRepDetector were tuned against squat_10_pocket only, so this trace is
+# the first real test of whether they generalise.
+
+exercise = SQUAT
+
+# 10 squats at a faster ~3 s cadence than the baseline recording's 4-5 s.
+reps = 10
+setStartMs = 55000
+setEndMs = 102000
+
+fullTraceEvents = 13
+
+# They stood still for roughly the first 55 s of the recording, so this stretch is a
+# false-positive check on real data rather than on a synthetic still period.
+quietStartMs = 15000
+quietEndMs = 50000
+
+notes = Samsung SM-S936B, ~58Hz, right front pocket, different person, ~3s cadence
