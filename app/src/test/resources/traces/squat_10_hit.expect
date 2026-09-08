@@ -2,10 +2,15 @@
 #
 # Second recording, and the first from a different person and a different phone.
 #
-# This trace sets both ends of the amplitude band. Hit's softest real rep swings 0.92 and
-# the recording contains the 0.60-amplitude, 501 ms wobble at ~63.8 s that minAmplitude
-# and minRepDurationMs exist to reject. The whole amplitude floor currently rests on this
-# one participant, which is why duration is kept as a second independent guard.
+# This trace sets both ends of the amplitude band. Measured through the 250 ms filter,
+# Hit's softest real rep swings 1.03 and the recording contains the 0.83-amplitude, 743 ms
+# wobble at ~63.5 s that minAmplitude exists to reject. The whole amplitude floor rests on
+# this one participant.
+#
+# Those figures were 0.92, 0.60 and 501 ms when the filter was a fixed 25 samples, which at
+# this trace's ~58 Hz spanned 430 ms rather than 250 ms. Normalising the filter moved them,
+# and the wobble is now LONGER than the shortest genuine rep in the library (615 ms), so
+# minRepDurationMs can no longer help reject it. See the redundancy note in RepDetector.
 
 exercise = SQUAT
 

@@ -113,23 +113,27 @@ class RepDetectorTest {
 
     @Test
     fun `synthetic ten-rep trace is detected within one rep`() {
-        // The non-default parameters are required, and that is a property of the fixture,
-        // not a weakness in the detector.
-        //
         // syntheticSquatTrace lays down one clean sine cycle every 100 samples at 50 Hz,
-        // i.e. a rep starts exactly every 2000 ms with no rest between them. The
-        // production cooldownMs of 2000 ms says "a new rep may not begin within 2 s of the
-        // previous one ending", so on this trace every second rep lands inside the
-        // cooldown and is discarded — the default detector reports 5, not 10.
+        // i.e. a rep starts exactly every 2000 ms with no rest between them.
         //
-        // That cooldown is right for humans (nobody squats back-to-back at a metronomic
-        // 2 s with zero pause) and wrong for this idealised generator. So the cooldown is
-        // switched off here, and minRepDurationMs is relaxed to 300 ms because the
-        // synthetic burst is shorter than a real squat's.
+        // The two overrides below are **no longer required**, and this comment used to say
+        // they were. They date from cooldownMs = 2000, which on a 2 s-cadence fixture put
+        // every second rep inside the cooldown and yielded 5 of 10. Since the cooldown was
+        // split into rebound suppression (500 ms) and minAmplitude, the defaults produce
+        // the same 9 reps as the overrides do, so the overrides now only pin that this
+        // fixture does not depend on those two guards. Left in place rather than removed
+        // because deleting them is a change to what the test asserts, not a comment fix.
         //
-        // 9 or 10 rather than exactly 10: the moving-average filter needs its 25-sample
-        // warm-up, so the first cycle can be clipped below the threshold. Losing at most
-        // one rep at the very start is expected behaviour for a causal filter.
+        // 9 or 10 rather than exactly 10, and the missing one is the *last*, not the first.
+        // This comment used to blame the filter's warm-up clipping the opening cycle. That
+        // is wrong: the detector reports reps 1-9 and the generator's tenth cycle opens a
+        // window at ~19140 ms that the trace, which stops at 19980 ms, never gives it a
+        // chance to close. Replaying at 20, 100, 250 and 500 ms of smoothing all yield the
+        // same 9, which is what rules the warm-up out as the cause.
+        //
+        // A rep window that is still open when the frames run out is correctly not emitted
+        // — the detector cannot know a rep finished if it never saw it finish — so this is
+        // a property of a fixture that ends mid-movement, not a defect.
         val synthetic = syntheticSquatTrace(reps = 10)
 
         val detected = SquatRepDetector(cooldownMs = 0L, minRepDurationMs = 300L)
@@ -141,6 +145,49 @@ class RepDetectorTest {
         )
     }
 
+
+    @Test
+    fun `filter length follows the sample rate rather than a fixed sample count`() {
+        // The property the duration-based window exists to provide, pinned directly rather
+        // than inferred from a rep count. A steady stream at a known interval is fed in and
+        // the filter is asked what it settled on: the answer must be "however many samples
+        // 250 ms holds at this rate", not a constant.
+        //
+        // These are the three rates actually seen — ~100 Hz (Pixel), ~58 Hz (Samsung) and
+        // the 50 Hz the live stream runs at. Under the previous fixed 25-sample filter all
+        // three rows would read 25 samples, spanning 250, 430 and 500 ms respectively, and
+        // this test is what would have caught that.
+        val cases = listOf(
+            Triple(10L, 25, "~100 Hz"), // 250 ms holds samples at ages 0..240 ms
+            Triple(17L, 15, "~58 Hz"),
+            Triple(20L, 13, "50 Hz")
+        )
+
+        cases.forEach { (intervalMs, expectedSamples, label) ->
+            val detector = SquatRepDetector()
+            // Two windows' worth, so the filter is well past its warm-up and steady.
+            val frames = (0 until 500L / intervalMs * 2).map { i ->
+                MotionFrame(i * intervalMs, 0f, 9.81f, 0f, 0f, 0f, 0f)
+            }
+            detector.processAll(frames)
+
+            assertEquals(
+                expectedSamples, detector.smoothingSampleCount,
+                "at $label (every $intervalMs ms) a 250 ms window should hold " +
+                    "$expectedSamples samples, not a fixed count"
+            )
+            // The span the filter covers is what has to stay constant, not the count.
+            val spanMs = (detector.smoothingSampleCount - 1) * intervalMs
+            assertTrue(
+                spanMs in (250L - intervalMs) until 250L,
+                "at $label the filter spans $spanMs ms, which is not ~250 ms"
+            )
+            assertEquals(
+                1000f / intervalMs, detector.observedSampleRateHz, 0.5f,
+                "at $label the reported rate should match the frames actually fed in"
+            )
+        }
+    }
 
     @Test
     fun `csv columns are resolved by header name not by position`() {
