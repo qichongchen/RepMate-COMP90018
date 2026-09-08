@@ -94,13 +94,18 @@ object TraceLibrary {
                 "Every trace needs one so the suite knows what it should detect."
         }
 
-        val frames = loadSensorLoggerCsv(csv.path)
+        // The expectation is read first because it declares the CSV's units: an iOS export is in
+        // g and an Android one in m/s^2, and the two are indistinguishable from their headers
+        // alone. Reading the manifest before the data is what makes the choice explicit here.
+        val expectation = loadTraceExpectation(expectationFile)
+
+        val frames = loadSensorLoggerCsv(csv.path, expectation.units)
         require(frames.isNotEmpty()) { "Recording '${csv.name}' contained no usable rows" }
 
         return LabelledTrace(
             name = name,
             frames = frames,
-            expectation = loadTraceExpectation(expectationFile)
+            expectation = expectation
         )
     }
 }

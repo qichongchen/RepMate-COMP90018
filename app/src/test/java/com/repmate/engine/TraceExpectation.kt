@@ -32,6 +32,9 @@ import java.io.File
  * @property quietStartMs start of a period where the phone was still, or null if the
  *   recording has no such stretch.
  * @property quietEndMs end of that still period.
+ * @property units the scale the companion CSV's acceleration columns are written in.
+ *   Defaults to m/s^2, which is what Sensor Logger's Android export uses; an iOS recording
+ *   must declare `units = g`.
  * @property notes free text for the human; never asserted on.
  */
 data class TraceExpectation(
@@ -43,6 +46,7 @@ data class TraceExpectation(
     val fullTraceEvents: Int? = null,
     val quietStartMs: Long? = null,
     val quietEndMs: Long? = null,
+    val units: AccelerationUnit = AccelerationUnit.METRES_PER_SECOND_SQUARED,
     val notes: String? = null
 ) {
     init {
@@ -69,7 +73,28 @@ data class TraceExpectation(
 /** Keys a `.expect` file may contain. Anything else is a typo and is rejected. */
 private val KNOWN_KEYS = setOf(
     "exercise", "reps", "setStartMs", "setEndMs", "tolerance",
-    "fullTraceEvents", "quietStartMs", "quietEndMs", "notes"
+    "fullTraceEvents", "quietStartMs", "quietEndMs", "units", "notes"
+)
+
+/**
+ * Accepted spellings of the `units` key.
+ *
+ * ## Why the unit lives in the ground-truth file
+ * [TraceLibrary] discovers recordings by scanning a directory, so there is no per-trace call
+ * site in code where a unit could be passed — the `.expect` file *is* the call site. An iOS
+ * and an Android export have byte-identical headers, so the alternative would be guessing
+ * from the data (a still phone reads ~1 or ~9.81), and a guess that goes wrong yields a
+ * silently empty rep count rather than an error.
+ *
+ * This does stretch what a `.expect` file is: it is now "the manifest for this recording"
+ * rather than purely "what the human did". That is the trade accepted here, and it is why
+ * the key is validated against this map rather than parsed loosely — an unrecognised spelling
+ * is rejected outright rather than falling back to a default that would be wrong.
+ */
+private val UNIT_SPELLINGS = mapOf(
+    "ms2" to AccelerationUnit.METRES_PER_SECOND_SQUARED,
+    "m/s^2" to AccelerationUnit.METRES_PER_SECOND_SQUARED,
+    "g" to AccelerationUnit.G,
 )
 
 /** Reads and parses a `.expect` file from disk. */
@@ -134,6 +159,11 @@ fun parseTraceExpectation(lines: List<String>, source: String = "<literal>"): Tr
         fullTraceEvents = values["fullTraceEvents"]?.let { int("fullTraceEvents", it) },
         quietStartMs = values["quietStartMs"]?.let { long("quietStartMs", it) },
         quietEndMs = values["quietEndMs"]?.let { long("quietEndMs", it) },
+        units = values["units"]?.let { raw ->
+            UNIT_SPELLINGS[raw.lowercase()] ?: throw IllegalArgumentException(
+                "$source: unknown units '$raw'; expected one of ${UNIT_SPELLINGS.keys}"
+            )
+        } ?: AccelerationUnit.METRES_PER_SECOND_SQUARED,
         notes = values["notes"]
     )
 }

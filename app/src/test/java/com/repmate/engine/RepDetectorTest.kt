@@ -1,5 +1,6 @@
 package com.repmate.engine
 
+import kotlin.math.sqrt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -140,6 +141,7 @@ class RepDetectorTest {
         )
     }
 
+
     @Test
     fun `csv columns are resolved by header name not by position`() {
         // Sensor Logger writes its axes in the order z,y,x — reversed. A positional parser
@@ -153,7 +155,7 @@ class RepDetectorTest {
             "1788594189529554400,2.5,6.0,5.0,4.0"
         )
 
-        val frames = parseSensorLoggerCsv(csv)
+        val frames = parseSensorLoggerCsv(csv, AccelerationUnit.METRES_PER_SECOND_SQUARED)
 
         assertEquals(2, frames.size)
 
@@ -172,6 +174,74 @@ class RepDetectorTest {
         assertEquals(0f, frames[0].gx)
         assertEquals(0f, frames[0].gy)
         assertEquals(0f, frames[0].gz)
+    }
+
+    @Test
+    fun `an iOS trace in g is converted to metres per second squared`() {
+        // Sensor Logger's iOS export writes the same header but in multiples of gravity, so a
+        // still phone reads ~1.0 rather than ~9.81. Reading it as m/s^2 would scale every
+        // sample down by 9.8, no threshold would ever be crossed, and the detector would
+        // report zero reps on a good recording without anything looking broken. This pins the
+        // conversion that prevents that.
+        val csv = listOf(
+            "time,seconds_elapsed,z,y,x",
+            "1788689813792495600,0.0,-0.9109802,-0.3657989,0.0177307"
+        )
+
+        val frames = parseSensorLoggerCsv(csv, AccelerationUnit.G)
+
+        assertEquals(1, frames.size)
+        assertEquals(-0.9109802f * STANDARD_GRAVITY, frames[0].az, TOLERANCE)
+        assertEquals(-0.3657989f * STANDARD_GRAVITY, frames[0].ay, TOLERANCE)
+        assertEquals(0.0177307f * STANDARD_GRAVITY, frames[0].ax, TOLERANCE)
+
+        // The property that actually matters downstream: a phone at rest sits at ~9.81, which
+        // is the resting value every threshold in SquatRepDetector is calibrated around.
+        val magnitude = sqrt(
+            frames[0].ax * frames[0].ax +
+                frames[0].ay * frames[0].ay +
+                frames[0].az * frames[0].az
+        )
+        assertTrue(
+            magnitude in 9.5f..10.1f,
+            "a still iPhone should read ~9.81 m/s^2 after conversion, got $magnitude"
+        )
+    }
+
+    @Test
+    fun `the same readings differ by gravity depending on the declared unit`() {
+        // The two units must not be interchangeable by accident: this is the mistake the
+        // required parameter exists to prevent, so it is worth one assertion of its own.
+        val csv = listOf(
+            "time,seconds_elapsed,z,y,x",
+            "1788594189329554400,0.0,1.0,0.0,0.0"
+        )
+
+        val asMetres = parseSensorLoggerCsv(csv, AccelerationUnit.METRES_PER_SECOND_SQUARED)
+        val asG = parseSensorLoggerCsv(csv, AccelerationUnit.G)
+
+        assertEquals(1.0f, asMetres[0].az)
+        assertEquals(STANDARD_GRAVITY, asG[0].az, TOLERANCE)
+    }
+
+    @Test
+    fun `expectation parser rejects unknown units`() {
+        // A misspelled unit must fail loudly rather than fall back to the m/s^2 default, which
+        // would read an iOS trace at a ninth of its true scale and silently detect nothing.
+        val lines = listOf(
+            "exercise = SQUAT",
+            "reps = 10",
+            "setStartMs = 0",
+            "setEndMs = 1000",
+            "units = gs" // not a spelling we accept
+        )
+
+        val message = messageFromFailure { parseTraceExpectation(lines) }
+
+        assertTrue(
+            message.contains("unknown units"),
+            "expected an 'unknown units' complaint, got: $message"
+        )
     }
 
     @Test
@@ -203,6 +273,9 @@ class RepDetectorTest {
     }
 
     companion object {
+        /** Float comparison slack for unit conversion, well under any threshold's precision. */
+        private const val TOLERANCE = 1e-4f
+
         /**
          * Loaded once for the whole class rather than per test.
          *
