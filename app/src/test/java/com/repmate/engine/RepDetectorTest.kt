@@ -190,6 +190,54 @@ class RepDetectorTest {
     }
 
     @Test
+    fun `a window that never closes is abandoned and the detector recovers`() {
+        // The squat_10_hit failure, reduced to its essentials. A phone parked between
+        // lowThreshold (9.7) and highThreshold (10.15) reads ~9.81, so a window opened
+        // before it was set down is never closed by the trigger. Without maxRepDurationMs
+        // that window ran 36.9 s on the real trace and was reported as one rep.
+        //
+        // Three stages: a burst that opens a window, a long park at ~9.81 that cannot close
+        // it, then a genuine rep. The park must yield nothing, and — the part a close-time
+        // check would not give — the rep after it must still be counted, because the
+        // detector has to have returned to IDLE rather than sat stuck in DESCENDING.
+        fun frames(fromMs: Long, toMs: Long, magnitude: Float): List<MotionFrame> =
+            (fromMs until toMs step 20L).map { MotionFrame(it, 0f, magnitude, 0f, 0f, 0f, 0f) }
+
+        val trace =
+            frames(0, 400, 11.5f) +          // burst: opens a window
+            frames(400, 30_000, 9.81f) +     // parked: above lowThreshold, so never closes
+            frames(30_000, 30_400, 9.0f) +   // finally dips under lowThreshold
+            frames(30_400, 31_200, 11.5f) +  // a real rep: 800 ms of movement...
+            frames(31_200, 31_600, 9.0f)     // ...and its close
+
+        val detected = SquatRepDetector().processAll(trace)
+
+        assertEquals(
+            1, detected.size,
+            "expected the 29.6 s parked window to be abandoned and only the closing rep to " +
+                "count, got ${detected.size}: " + detected.joinToString {
+                    "${it.startMs}-${it.endMs} ms"
+                }
+        )
+        // Not an exact timestamp: the 250 ms filter takes ~100 ms to climb past
+        // highThreshold after the signal steps up, so the window opens a little after the
+        // movement does. What matters is that it opens during the final burst at all.
+        assertTrue(
+            detected.single().startMs in 30_400L..31_200L,
+            "the surviving rep must be the one after the park, but it started at " +
+                "${detected.single().startMs} ms — if the detector were still stuck in " +
+                "DESCENDING it could not have opened this window at all"
+        )
+
+        // The limit is load-bearing, not decorative: drop it under this fixture's own 800 ms
+        // rep and that rep is abandoned too, leaving nothing.
+        assertTrue(
+            SquatRepDetector(maxRepDurationMs = 600L).processAll(trace).isEmpty(),
+            "a limit below the fixture's 800 ms rep should abandon it as well"
+        )
+    }
+
+    @Test
     fun `csv columns are resolved by header name not by position`() {
         // Sensor Logger writes its axes in the order z,y,x — reversed. A positional parser
         // reading "cell 2 is x" would silently swap the axes and every magnitude computed

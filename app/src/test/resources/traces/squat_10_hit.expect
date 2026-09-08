@@ -19,7 +19,13 @@ reps = 10
 setStartMs = 55000
 setEndMs = 102000
 
-fullTraceEvents = 13
+# Was 13 until maxRepDurationMs was added. The thirteenth was never a movement event:
+# after the last squat the phone is parked reading ~9.81, which sits between lowThreshold
+# (9.7) and highThreshold (10.15), so the window opened at 100.9 s and nothing ever closed
+# it -- 36.9 s reported as one rep. It is now abandoned mid-flight, and the remaining 12 are
+# unchanged: the 10 squats, a 0.59 s burst at ~5.6 s, and the 2.20 s phone-into-pocket burst
+# at ~7.4 s, which is real movement and still counts.
+fullTraceEvents = 12
 
 # Hit stood still for roughly the first 55 s of the recording, so this stretch is a
 # false-positive check on real data rather than on a synthetic still period.

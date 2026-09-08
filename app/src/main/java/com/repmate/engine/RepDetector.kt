@@ -99,6 +99,25 @@ import kotlin.math.sqrt
  *   failure a user notices most, so the headroom is deliberate. Note that this guard no
  *   longer rejects the wobble it was originally sized against — see the redundancy note
  *   below.
+ * - [maxRepDurationMs] — a window open longer than this is **abandoned**, not counted. The
+ *   longest genuine rep in the corpus runs **1573 ms** (Hit's tenth squat); 3000 ms leaves
+ *   1427 ms of headroom, near twice the longest rep, and still clears the 2195 ms
+ *   phone-into-pocket burst that Hit's `fullTraceEvents` deliberately counts. It is a
+ *   statement about human movement, not a tuned number: no single squat runs three seconds
+ *   from movement onset to movement end.
+ *
+ *   The failure it exists for is not a mistuned threshold but a **stuck state machine**.
+ *   The trigger closes a window when the signal falls under [lowThreshold]; a phone lying
+ *   still reads ~9.81, which sits *between* [lowThreshold] (9.7) and [highThreshold]
+ *   (10.15). So a burst that ends with the phone parked — set finished, phone set down,
+ *   still in hand — opens a window nothing ever closes. On Hit's trace that window ran from
+ *   100.9 s to 137.8 s: **36.9 seconds** reported as one rep.
+ *
+ *   Note where the check sits: the window is abandoned **mid-flight**, the moment it passes
+ *   the limit, not judged when it finally closes. Discarding it at close time would fix the
+ *   miscount and leave the real defect, because during those 36.9 s the detector is stuck in
+ *   [RepPhase.DESCENDING] and cannot start a rep at all — a live user would squat into a
+ *   counter that had gone deaf. Abandoning returns it to [RepPhase.IDLE] immediately.
  * - [cooldownMs] — a new rep may not start until this long after the previous one ended,
  *   suppressing the rebound of a rep already counted. 500 ms rather than the 2000 ms this
  *   started at: see the conflation note below.
@@ -188,6 +207,9 @@ import kotlin.math.sqrt
  *   9.7, just below resting gravity.
  * @param minRepDurationMs minimum open-to-close time for a rep to count. Default 550 ms,
  *   65 ms below the shortest real rep recorded (615 ms).
+ * @param maxRepDurationMs how long a window may stay open before it is abandoned unread.
+ *   Default 3000 ms, near twice the longest rep recorded (1573 ms). Must exceed
+ *   [minRepDurationMs].
  * @param cooldownMs minimum quiet time between the end of one counted rep and the start of
  *   the next. Default 500 ms, leaving headroom above the fastest recorded gap of 917 ms.
  * @param minAmplitude minimum peak-to-peak swing of the smoothed magnitude, in m/s^2, for a
@@ -202,6 +224,7 @@ class SquatRepDetector(
     private val highThreshold: Float = 10.15f,
     private val lowThreshold: Float = 9.7f,
     private val minRepDurationMs: Long = 550L,
+    private val maxRepDurationMs: Long = 3000L,
     private val cooldownMs: Long = 500L,
     private val minAmplitude: Float = 0.94f,
     private val smoothingWindowMs: Long = 250L
@@ -210,6 +233,10 @@ class SquatRepDetector(
     init {
         require(smoothingWindowMs >= 1L) { "smoothingWindowMs must be at least 1 ms" }
         require(minAmplitude >= 0f) { "minAmplitude cannot be negative" }
+        require(maxRepDurationMs > minRepDurationMs) {
+            "maxRepDurationMs ($maxRepDurationMs) must sit above minRepDurationMs " +
+                "($minRepDurationMs), or no window could ever satisfy both"
+        }
         require(lowThreshold < highThreshold) {
             "lowThreshold ($lowThreshold) must sit below highThreshold ($highThreshold) " +
                 "so the two form a hysteresis gap"
@@ -273,6 +300,13 @@ class SquatRepDetector(
     private var lastRepEndMs: Long? = null
 
     /**
+     * Set when a window is abandoned for running past [maxRepDurationMs], and cleared once
+     * the smoothed signal drops back under [lowThreshold]. While it is set no new window may
+     * open, so one long burst yields one abandonment rather than a train of them.
+     */
+    private var awaitingLowCrossing = false
+
+    /**
      * Feeds one frame into the filter and the state machine.
      *
      * @return the [RepEvent] if this frame completed a rep that passed every guard, or
@@ -284,7 +318,14 @@ class SquatRepDetector(
 
         when (phase) {
             RepPhase.IDLE -> {
-                if (smoothed > highThreshold) {
+                if (awaitingLowCrossing) {
+                    // A window was abandoned while the signal was still elevated. Opening a
+                    // new one off the same unbroken burst would just abandon it again every
+                    // maxRepDurationMs, so wait for the signal to come all the way back down
+                    // first. Same discipline as the Schmitt trigger: returning to the "off"
+                    // level is what re-arms the "on" one.
+                    if (smoothed < lowThreshold) awaitingLowCrossing = false
+                } else if (smoothed > highThreshold) {
                     // Movement burst begins: open a rep window and start tracking its swing.
                     phase = RepPhase.DESCENDING
                     repStartMs = frame.tMillis
@@ -295,6 +336,15 @@ class SquatRepDetector(
 
             RepPhase.DESCENDING -> {
                 trackExtremes(smoothed)
+                if (frame.tMillis - repStartMs > maxRepDurationMs) {
+                    // Open too long to be a squat: abandon the window rather than wait for a
+                    // close that may never come. Checked before the close test, so a window
+                    // past the limit can never fall through and be emitted as a rep.
+                    phase = RepPhase.IDLE
+                    awaitingLowCrossing = true
+                    resetRepWindow()
+                    return null
+                }
                 if (smoothed < lowThreshold) {
                     // Movement burst is over: close the window and apply the guards.
                     val event = closeRepWindow(frame.tMillis)
@@ -326,6 +376,7 @@ class SquatRepDetector(
         resetRepWindow()
         phase = RepPhase.IDLE
         lastRepEndMs = null
+        awaitingLowCrossing = false
         smoothedMagnitude = 0f
         // Nothing past windowCount is ever read, so emptying the filter is these three
         // lines. The arrays keep the capacity they grew to, which is already the right
