@@ -221,14 +221,35 @@ import kotlin.math.sqrt
  *   derived from the observed frame timing, so this stays 250 ms of signal at any rate.
  */
 class SquatRepDetector(
-    private val highThreshold: Float = 10.15f,
-    private val lowThreshold: Float = 9.7f,
-    private val minRepDurationMs: Long = 550L,
-    private val maxRepDurationMs: Long = 3000L,
-    private val cooldownMs: Long = 500L,
-    private val minAmplitude: Float = 0.94f,
-    private val smoothingWindowMs: Long = 250L
+    private val highThreshold: Float = DEFAULT_HIGH_THRESHOLD,
+    private val lowThreshold: Float = DEFAULT_LOW_THRESHOLD,
+    private val minRepDurationMs: Long = DEFAULT_MIN_REP_DURATION_MS,
+    private val maxRepDurationMs: Long = DEFAULT_MAX_REP_DURATION_MS,
+    private val cooldownMs: Long = DEFAULT_COOLDOWN_MS,
+    private val minAmplitude: Float = DEFAULT_MIN_AMPLITUDE,
+    private val smoothingWindowMs: Long = DEFAULT_SMOOTHING_WINDOW_MS
 ) {
+
+    /**
+     * Builds a detector from a user's [CalibrationProfile], falling back to the tuned
+     * defaults for anyone who has not calibrated yet.
+     *
+     * Only the four thresholds calibration can measure are taken from the profile.
+     * [highThreshold] and [lowThreshold] are deliberately **not** calibrated: they are
+     * positions relative to gravity (~9.81 m/s^2), which is the same for every phone and
+     * every person, so there is nothing personal in them to derive. [smoothingWindowMs] is
+     * not calibrated either — it is a property of the signal rather than of the user, it is
+     * already rate-invariant, and changing it per user would move every amplitude the
+     * profile had just been measured in.
+     *
+     * @param profile the user's calibration, or null to use the tuned defaults unchanged.
+     */
+    constructor(profile: CalibrationProfile?) : this(
+        minRepDurationMs = profile?.minRepDurationMs ?: DEFAULT_MIN_REP_DURATION_MS,
+        maxRepDurationMs = profile?.maxRepDurationMs ?: DEFAULT_MAX_REP_DURATION_MS,
+        cooldownMs = profile?.cooldownMs ?: DEFAULT_COOLDOWN_MS,
+        minAmplitude = profile?.minAmplitude ?: DEFAULT_MIN_AMPLITUDE
+    )
 
     init {
         require(smoothingWindowMs >= 1L) { "smoothingWindowMs must be at least 1 ms" }
@@ -482,11 +503,22 @@ class SquatRepDetector(
         maxSmoothed = -Float.MAX_VALUE
     }
 
-    private companion object {
+    companion object {
+        // The tuned defaults, named so a CalibrationProfile can fall back to exactly these
+        // values rather than repeating the literals. Every figure and its justification is
+        // in the guards section of this class's documentation; these are unchanged.
+        const val DEFAULT_HIGH_THRESHOLD = 10.15f
+        const val DEFAULT_LOW_THRESHOLD = 9.7f
+        const val DEFAULT_MIN_REP_DURATION_MS = 550L
+        const val DEFAULT_MAX_REP_DURATION_MS = 3000L
+        const val DEFAULT_COOLDOWN_MS = 500L
+        const val DEFAULT_MIN_AMPLITUDE = 0.94f
+        const val DEFAULT_SMOOTHING_WINDOW_MS = 250L
+
         /**
          * Starting size of the filter buffer: enough for a 250 ms window at 128 Hz, so none
          * of the phone rates seen so far (50-100 Hz) trigger a resize at all.
          */
-        const val INITIAL_WINDOW_CAPACITY = 32
+        private const val INITIAL_WINDOW_CAPACITY = 32
     }
 }
