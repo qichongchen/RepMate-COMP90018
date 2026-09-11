@@ -44,7 +44,17 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Coroutines + Flow: the engine consumes a Flow<MotionFrame> and DeviceSensorSource
+    // builds one with callbackFlow. The -android artifact adds Dispatchers.Main on top of
+    // coroutines-core, which is what lets a ViewModel collect frames on the main dispatcher.
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
+    // kotlin.test for the engine's replay tests. This must be kotlin-test-JUNIT, not
+    // plain kotlin-test: on the JVM kotlin.test.Test is an expect annotation whose actual
+    // is a typealias for org.junit.Test, and it lives in the framework-specific artifact.
+    // The Kotlin Gradle plugin picks that variant automatically; AGP's built-in Kotlin
+    // support does not, so it is named explicitly here.
+    testImplementation(libs.kotlin.test.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

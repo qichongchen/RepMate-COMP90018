@@ -1,0 +1,21 @@
+# Ground truth for squat_10_lisa.csv
+#
+# Third participant, and the first iOS recording in the library.
+#
+# Sensor Logger's iOS export has no TotalAcceleration.csv. The file used here is
+# AccelerometerUncalibrated.csv, which has the same header as the Android export but is
+# written in g, not m/s^2 — hence the units key below. (Accelerometer.csv on iOS is not
+# usable: gravity has already been removed, so a still phone reads ~0 and every threshold
+# in SquatRepDetector, all of which sit around 9.81, would be meaningless.)
+
+exercise = SQUAT
+
+# The CSV is in multiples of gravity; the loader multiplies by 9.80665 on the way in.
+units = g
+
+# 10 squats at a continuous ~2.2 s cadence — the fastest sustained pace in the library.
+reps = 10
+setStartMs = 3000
+setEndMs = 25500
+
+notes = participant: Lisa (~2.2s cadence). iPhone 14 Pro, ~100Hz, front pocket. First iOS trace: AccelerometerUncalibrated.csv, g-units.
