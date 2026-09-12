@@ -1,0 +1,21 @@
+# Ground truth for jumpingjack_10_mohit_paced_fast.csv
+#
+# Second jumping-jack recording, same participant and phone, at a faster metronome
+# setting. Recorded immediately after jumpingjack_10_mohit_paced, so the two differ in
+# cadence and in nothing else -- which is what makes the pair useful: the pairing model
+# assumes two impacts per rep, and this trace tests whether that survives a quicker beat.
+
+exercise = JUMPING_JACK
+
+# 10 jacks inside the window below. The recording runs ~28.0 s in total.
+reps = 10
+setStartMs = 7000
+setEndMs = 19500
+tolerance = 0
+fullTraceEvents = 10
+
+# 10 over the whole recording, matching the in-set count for the same reason as the
+# companion trace: pairing discards lone handling bursts. See the note in
+# jumpingjack_10_mohit_paced.expect. No quiet window is declared.
+
+notes = participant: Mohit. Pixel, ~99Hz, front pocket, metronome-paced at a faster setting than jumpingjack_10_mohit_paced. Recorded in the same session.
