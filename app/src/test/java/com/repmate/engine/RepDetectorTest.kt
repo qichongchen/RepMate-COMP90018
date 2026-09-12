@@ -60,7 +60,7 @@ class RepDetectorTest {
         // performed the set, does the count match what they did? Phone handling before
         // and after the set is excluded by the window, so this is not flattered by it.
         eachTrace("ground-truth rep count") { trace ->
-            val detected = SquatRepDetector().processAll(trace.setWindow()).size
+            val detected = trace.detect(trace.setWindow()).size
             if (trace.expectation.acceptsRepCount(detected)) {
                 null
             } else {
@@ -78,7 +78,7 @@ class RepDetectorTest {
         // it means a threshold change cannot quietly alter what the raw signal yields.
         eachTrace("whole-recording event count") { trace ->
             val expected = trace.expectation.fullTraceEvents ?: return@eachTrace null
-            val detected = SquatRepDetector().processAll(trace.frames).size
+            val detected = trace.detect(trace.frames).size
             if (detected == expected) {
                 null
             } else {
@@ -94,7 +94,7 @@ class RepDetectorTest {
         eachTrace("quiet window") { trace ->
             val quiet = trace.quietWindow() ?: return@eachTrace null
             if (quiet.isEmpty()) return@eachTrace "declared a quiet window containing no frames"
-            val detected = SquatRepDetector().processAll(quiet).size
+            val detected = trace.detect(quiet).size
             if (detected == 0) null else "a still phone produced $detected rep(s)"
         }
     }
@@ -105,8 +105,8 @@ class RepDetectorTest {
         // reps, or replay-tuned thresholds mean nothing. RepEvent is a data class, so this
         // compares index, start, end and amplitude field by field.
         eachTrace("determinism") { trace ->
-            val first = SquatRepDetector().processAll(trace.frames)
-            val second = SquatRepDetector().processAll(trace.frames)
+            val first = trace.detect(trace.frames)
+            val second = trace.detect(trace.frames)
             if (first == second) null else "two instances disagreed: ${first.size} vs ${second.size} reps"
         }
     }

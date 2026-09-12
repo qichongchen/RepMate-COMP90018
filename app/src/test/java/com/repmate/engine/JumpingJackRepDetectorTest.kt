@@ -284,6 +284,38 @@ class JumpingJackRepDetectorTest {
         )
     }
 
+    // --- wiring ----------------------------------------------------------------------------
+
+    @Test
+    fun `a trace is replayed through the detector its expectation names`() {
+        // Guards the seam the .expect format depends on. Before LabelledTrace.detect existed
+        // every test hardcoded SquatRepDetector, so the `exercise` key was parsed, validated
+        // — and ignored. This pins that the key actually selects the detector, by running one
+        // set of frames under both labels and requiring the answers to differ.
+        val frames = pacedSet(reps = 10)
+        fun labelled(exercise: ExerciseType) = LabelledTrace(
+            name = "synthetic_$exercise",
+            frames = frames,
+            expectation = TraceExpectation(
+                exercise = exercise,
+                reps = 10,
+                setStartMs = 0,
+                setEndMs = frames.last().tMillis
+            )
+        )
+
+        assertEquals(
+            10, labelled(ExerciseType.JUMPING_JACK).detect(frames).size,
+            "a JUMPING_JACK trace must run through the pairing detector"
+        )
+        assertEquals(
+            0, labelled(ExerciseType.SQUAT).detect(frames).size,
+            "the same frames under a SQUAT label must run through the squat detector, whose " +
+                "one-burst-per-rep model finds nothing here — if this matches the line above, " +
+                "the exercise key is being ignored again"
+        )
+    }
+
     private companion object {
         /** Produces soft impacts measuring ~9.2-9.7 peak-to-peak, inside the reported 9.0-11.7. */
         const val JUMP_OUT_PEAK = 32f
