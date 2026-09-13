@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.database.sqlite.SQLiteException
+import android.util.Log
 
 @Singleton
 class RoomSessionRepository @Inject constructor(
@@ -33,10 +35,18 @@ class RoomSessionRepository @Inject constructor(
             )
         }
 
-        sessionDao.replaceSession(
-            session = sessionEntity,
-            repScores = repScoreEntities
-        )
+        try {
+            sessionDao.replaceSession(
+                session = sessionEntity,
+                repScores = repScoreEntities
+            )
+        } catch (e: SQLiteException) {
+            Log.e(
+                "RoomSessionRepository",
+                "Failed to save session ${session.id}",
+                e
+            )
+        }
     }
 
     override fun recent(limit: Int): Flow<List<WorkoutSession>> {
