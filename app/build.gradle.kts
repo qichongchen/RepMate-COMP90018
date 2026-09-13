@@ -45,6 +45,7 @@ dependencies {
     // icons beyond the small "core" set (Home, Person, PlayArrow); the trophy and history icons
     // only live in the extended pack, so pull that in instead of hand-drawing two glyphs.
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
