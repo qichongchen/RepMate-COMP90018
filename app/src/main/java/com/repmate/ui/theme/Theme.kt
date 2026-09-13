@@ -51,6 +51,7 @@ fun RepMateTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = RepMateShapes,
         content = content
     )
 }
