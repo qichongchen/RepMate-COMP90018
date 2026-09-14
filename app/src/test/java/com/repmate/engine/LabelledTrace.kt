@@ -37,6 +37,37 @@ data class LabelledTrace(
         return frames.filter { it.tMillis in start..end }
     }
 
+    /**
+     * Runs the detector this recording's exercise calls for, and returns the reps it found.
+     *
+     * ## Why the choice lives here
+     * Every trace test iterates the whole library, so each one needs "the right detector for
+     * this recording" in exactly the same way. Before this existed the tests all hardcoded
+     * [SquatRepDetector], which meant the `exercise` key in a `.expect` file was parsed,
+     * validated against [ExerciseType] — and then ignored. A jumping-jack recording dropped
+     * into `traces/` would have been replayed through the squat detector, and the failure
+     * would have looked like a threshold problem rather than a wiring one.
+     *
+     * Putting the choice beside [setWindow] keeps the rule that this class is where "what
+     * this recording means" is decided once for the whole suite.
+     *
+     * A fresh detector is built per call on purpose: these are stateful, and several tests
+     * replay the same trace twice to check determinism.
+     *
+     * @param frames the slice to replay — usually [setWindow], [quietWindow] or all [frames].
+     */
+    fun detect(frames: List<MotionFrame>): List<RepEvent> = when (expectation.exercise) {
+        ExerciseType.SQUAT -> SquatRepDetector().processAll(frames)
+        ExerciseType.JUMPING_JACK -> JumpingJackRepDetector().processAll(frames)
+        // Deliberately fatal rather than falling back to a squat detector. A silent
+        // fallback would report a plausible-looking count for an exercise nothing has been
+        // written for, which is the failure the .expect format exists to prevent.
+        ExerciseType.PUSHUP -> error(
+            "No detector for ${expectation.exercise} yet (trace '$name'). Add one, or remove " +
+                "the recording until there is one."
+        )
+    }
+
     /** Length of the recording in seconds, for reporting. */
     fun durationSeconds(): Double =
         if (frames.isEmpty()) 0.0 else frames.last().tMillis / 1000.0

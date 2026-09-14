@@ -1,0 +1,33 @@
+# Ground truth for jumpingjack_10_mohit_paced.csv
+#
+# First jumping-jack recording, and the first trace in the library for an exercise other
+# than the squat. Performed in time with a metronome, which is a precondition and not a
+# detail: JumpingJackRepDetector pairs two impacts per rep, and that 2.0 bursts-per-rep
+# ratio only holds at a paced cadence. See the pacing note in that class.
+#
+# Channel: TotalAcceleration.csv from the Sensor Logger export, the same channel the
+# Android squat traces use, so gravity is included and the thresholds have a resting
+# ~9.81 to sit against.
+
+exercise = JUMPING_JACK
+
+# 10 jacks inside the window below. The recording runs ~28.7 s in total; the set is the
+# middle stretch, with the phone being pocketed before it and retrieved after.
+reps = 10
+setStartMs = 8000
+setEndMs = 21000
+tolerance = 0
+fullTraceEvents = 10
+
+# 10 over the whole recording -- the same as the in-set count, which is NOT what the squat
+# traces do. Every squat trace reports 12 across the raw file: 10 reps plus two
+# phone-handling bursts that clear every guard.
+#
+# Pairing is what removes them here. A handling burst is a lone event, and a lone event
+# never finds a harder partner to pair with, so it is held as a candidate jump-out and then
+# displaced by the next burst. Requiring two ordered impacts turns out to reject
+# single-burst artifacts for free, which the one-burst-per-rep squat model cannot do.
+#
+# No quiet window is declared: no still stretch has been identified in this recording.
+
+notes = participant: Mohit. Pixel, ~99Hz, front pocket, metronome-paced. First jumping-jack trace; the detector's thresholds (minBurstAmplitude 4.1, minBurstDurationMs 130) were proposed from burst statistics, and this recording is the first real test of them.
