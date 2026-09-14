@@ -32,6 +32,7 @@ import androidx.navigation.navArgument
 import com.example.repmate.BuildConfig
 import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.auth.LogInScreen
 import com.repmate.ui.auth.SignUpScreen
 import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.components.BottomNavBar
@@ -177,7 +178,30 @@ fun RepMateNavGraph(
                     },
                 )
             }
-            composable(RepMateDestinations.LOGIN) { PlaceholderScreen(RepMateDestinations.LOGIN) }
+            composable(RepMateDestinations.LOGIN) {
+                LogInScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onLogInSuccess = {
+                        // Returning user: straight to home, not onboarding -- that's the
+                        // first-time-only explainer flow, per the engine/product side.
+                        navController.navigate(RepMateDestinations.HOME) {
+                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                        }
+                    },
+                    onForgotPasswordClick = {
+                        // TODO: navigate to a password-reset flow once that screen/route exists.
+                        // Not blocking LogInScreen on it per the explicit call to stub this.
+                    },
+                    onSignUpClick = {
+                        // Mirrors Signup's "Log in" link: replaces this screen on the back stack
+                        // rather than stacking on top of it, so back from Sign up returns to
+                        // Welcome, not bounces through Login.
+                        navController.navigate(RepMateDestinations.SIGNUP) {
+                            popUpTo(RepMateDestinations.LOGIN) { inclusive = true }
+                        }
+                    },
+                )
+            }
 
             composable(RepMateDestinations.ONBOARDING) {
                 OnboardingPlaceholder(

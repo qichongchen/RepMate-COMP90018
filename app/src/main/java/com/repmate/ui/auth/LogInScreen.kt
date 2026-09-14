@@ -1,13 +1,16 @@
 package com.repmate.ui.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -18,16 +21,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.platform.LocalContext
 import com.example.repmate.BuildConfig
 import com.repmate.ui.components.LoadingOverlay
 import com.repmate.ui.components.RepMateButton
@@ -35,21 +37,25 @@ import com.repmate.ui.theme.RepMateTheme
 import kotlinx.coroutines.launch
 
 /**
- * The sign-up screen: brand-agnostic form (Google + email/password), wired to [AuthViewModel].
+ * The log-in screen: brand-agnostic form (Google + email/password), wired to the same
+ * [AuthViewModel] class [SignUpScreen] uses -- see that ViewModel's class doc for why that's a
+ * shared class, not a shared live instance.
  *
- * Split into this stateful wrapper and the stateless [SignUpContent] below so previews (and any
- * future UI test) can render the form directly from a plain [AuthFormUiState], without needing
- * Hilt or a real [CredentialManager] available -- neither of which `@Preview` can provide.
+ * Split into this stateful wrapper and the stateless [LogInContent] below, same reasoning as
+ * [SignUpScreen]/`SignUpContent`: previews render the form from a plain [AuthFormUiState],
+ * without needing Hilt or a real [CredentialManager], neither of which `@Preview` can provide.
  *
  * @param onBackClick invoked when the back chevron is tapped.
- * @param onSignUpSuccess invoked once, after either auth path succeeds.
- * @param onLogInClick invoked when the "Log in" link at the bottom is tapped.
+ * @param onLogInSuccess invoked once, after either auth path succeeds.
+ * @param onForgotPasswordClick invoked when "Forgot password?" is tapped.
+ * @param onSignUpClick invoked when the "Sign up" link at the bottom is tapped.
  */
 @Composable
-fun SignUpScreen(
+fun LogInScreen(
     onBackClick: () -> Unit,
-    onSignUpSuccess: () -> Unit,
-    onLogInClick: () -> Unit,
+    onLogInSuccess: () -> Unit,
+    onForgotPasswordClick: () -> Unit,
+    onSignUpClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
@@ -58,15 +64,15 @@ fun SignUpScreen(
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(viewModel) {
-        viewModel.authSucceeded.collect { onSignUpSuccess() }
+        viewModel.authSucceeded.collect { onLogInSuccess() }
     }
 
-    SignUpContent(
+    LogInContent(
         uiState = uiState,
         onBackClick = onBackClick,
         onEmailChanged = viewModel::onEmailChanged,
         onPasswordChanged = viewModel::onPasswordChanged,
-        onCreateAccountClick = viewModel::onCreateAccountClicked,
+        onLogInClick = viewModel::onLogInClicked,
         onGoogleClick = {
             coroutineScope.launch {
                 viewModel.onGoogleSignInStarted()
@@ -81,24 +87,26 @@ fun SignUpScreen(
                     }
             }
         },
-        onLogInClick = onLogInClick,
+        onForgotPasswordClick = onForgotPasswordClick,
+        onSignUpClick = onSignUpClick,
         modifier = modifier,
     )
 }
 
 @Composable
-private fun SignUpContent(
+private fun LogInContent(
     uiState: AuthFormUiState,
     onBackClick: () -> Unit,
     onEmailChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
-    onCreateAccountClick: () -> Unit,
-    onGoogleClick: () -> Unit,
     onLogInClick: () -> Unit,
+    onGoogleClick: () -> Unit,
+    onForgotPasswordClick: () -> Unit,
+    onSignUpClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Box, not Column, is the root: LoadingOverlay is a later sibling here so it draws on top of
-    // the whole screen and dims/blocks it, rather than needing its own placement logic.
+    // Same structure as SignUpContent: Box root so LoadingOverlay draws on top of everything as
+    // a later sibling, Column below scrolls except for the pinned bottom prompt.
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier =
@@ -106,8 +114,6 @@ private fun SignUpContent(
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
         ) {
-            // Everything except the bottom "Log in" link scrolls as one unit -- a full form plus
-            // an open keyboard can easily overflow a short/small-width phone.
             Column(
                 modifier =
                     Modifier
@@ -120,31 +126,26 @@ private fun SignUpContent(
 
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
-                    text = "Create account",
+                    text = "Welcome back",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "track your reps across devices",
+                    text = "log in to continue",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
-                // No button-level spinner here or on "Create account" below -- the full-screen
-                // LoadingOverlay is the one visual indicator for "a request is in flight" now,
-                // so both buttons only need `enabled` to stop looking (and being) tappable.
                 AuthGoogleButton(onClick = onGoogleClick, enabled = !uiState.isBusy)
 
                 Spacer(modifier = Modifier.height(24.dp))
                 AuthDivider()
 
-                // Form-level errors (account collision, bad credentials, network) show right
-                // here -- the first thing under the divider, above both fields -- so they don't
-                // require scrolling past the form to notice. Field-level validation ("password
-                // too short") stays as supportingText under its own field below; this is only
-                // for errors that aren't about one specific field.
+                // Same placement as SignUp: form-level errors ("incorrect email or password",
+                // network failures) sit right under the divider, above both fields, so they
+                // don't require scrolling past the form to notice.
                 if (uiState.generalError != null) {
                     Spacer(modifier = Modifier.height(24.dp))
                     AuthErrorBanner(uiState.generalError)
@@ -158,7 +159,7 @@ private fun SignUpContent(
                     errorText = uiState.emailError,
                     enabled = !uiState.isBusy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    placeholder = "johndoe@example.com",
+                    placeholder = "jess@example.com",
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -169,43 +170,38 @@ private fun SignUpContent(
                     errorText = uiState.passwordError,
                     enabled = !uiState.isBusy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    // "Password" rather than a dot-mask string: a placeholder made of literal
-                    // bullet characters risks reading as if the field already has masked input.
                     placeholder = "Password",
                     visualTransformation = PasswordVisualTransformation(),
                 )
-                // NOTE: no name field here on purpose -- name is collected later in Profile
-                // setup, to keep this form to the two fields Firebase actually needs.
 
-                Spacer(modifier = Modifier.height(24.dp))
-                RepMateButton(
-                    text = "Create account",
-                    onClick = onCreateAccountClick,
-                    enabled = !uiState.isBusy,
-                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text(
+                        text = "Forgot password?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable(onClick = onForgotPasswordClick),
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "By continuing you agree to RepMate's Terms & Privacy Policy",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                RepMateButton(
+                    text = "Log in",
+                    onClick = onLogInClick,
+                    enabled = !uiState.isBusy,
                 )
             }
 
             AuthBottomPrompt(
-                promptText = "Already have an account? ",
-                actionText = "Log in",
-                onActionClick = onLogInClick,
+                promptText = "Don't have an account? ",
+                actionText = "Sign up",
+                onActionClick = onSignUpClick,
             )
         }
 
-        // uiState.isBusy covers both auth paths: set the moment either one starts (email/
-        // password's own call, or Google's -- from the instant the Credential Manager picker is
-        // launched, all the way through the Firebase credential exchange) and cleared only once
-        // that path resolves, success or failure. See AuthViewModel.onGoogleSignInStarted/
-        // onGoogleIdTokenReceived for exactly where those two boundaries are.
+        // Same isBusy contract as SignUpScreen: true from the moment either auth path starts
+        // until it resolves (success or failure) -- see AuthViewModel.onLogInClicked and
+        // onGoogleSignInStarted/onGoogleIdTokenReceived for exactly where those boundaries are.
         if (uiState.isBusy) {
             LoadingOverlay()
         }
@@ -215,104 +211,73 @@ private fun SignUpContent(
 private val PREVIEW_ERROR_STATE =
     AuthFormUiState(
         email = "jess@example.com",
-        passwordError = "Password must be at least 6 characters.",
-        generalError = "An account with this email already exists.",
+        generalError = "Incorrect email or password.",
     )
 
 @Preview(name = "Light - Default", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
-private fun SignUpScreenLightPreview() {
+private fun LogInScreenLightPreview() {
     RepMateTheme(darkTheme = false) {
-        SignUpContent(
+        LogInContent(
             uiState = AuthFormUiState(email = "jess@example.com"),
             onBackClick = {},
             onEmailChanged = {},
             onPasswordChanged = {},
-            onCreateAccountClick = {},
-            onGoogleClick = {},
             onLogInClick = {},
+            onGoogleClick = {},
+            onForgotPasswordClick = {},
+            onSignUpClick = {},
         )
     }
 }
 
 @Preview(name = "Dark - Default", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
-private fun SignUpScreenDarkPreview() {
+private fun LogInScreenDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        SignUpContent(
+        LogInContent(
             uiState = AuthFormUiState(email = "jess@example.com"),
             onBackClick = {},
             onEmailChanged = {},
             onPasswordChanged = {},
-            onCreateAccountClick = {},
-            onGoogleClick = {},
             onLogInClick = {},
+            onGoogleClick = {},
+            onForgotPasswordClick = {},
+            onSignUpClick = {},
         )
     }
 }
 
 @Preview(name = "Light - Error state", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
-private fun SignUpScreenLightErrorPreview() {
+private fun LogInScreenLightErrorPreview() {
     RepMateTheme(darkTheme = false) {
-        SignUpContent(
+        LogInContent(
             uiState = PREVIEW_ERROR_STATE,
             onBackClick = {},
             onEmailChanged = {},
             onPasswordChanged = {},
-            onCreateAccountClick = {},
-            onGoogleClick = {},
             onLogInClick = {},
+            onGoogleClick = {},
+            onForgotPasswordClick = {},
+            onSignUpClick = {},
         )
     }
 }
 
 @Preview(name = "Dark - Error state", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
-private fun SignUpScreenDarkErrorPreview() {
+private fun LogInScreenDarkErrorPreview() {
     RepMateTheme(darkTheme = true) {
-        SignUpContent(
+        LogInContent(
             uiState = PREVIEW_ERROR_STATE,
             onBackClick = {},
             onEmailChanged = {},
             onPasswordChanged = {},
-            onCreateAccountClick = {},
-            onGoogleClick = {},
             onLogInClick = {},
-        )
-    }
-}
-
-private val PREVIEW_LOADING_STATE = AuthFormUiState(email = "jess@example.com", isEmailLoading = true)
-
-@Preview(name = "Light - Loading overlay", showBackground = true, widthDp = 360, heightDp = 800)
-@Composable
-private fun SignUpScreenLightLoadingPreview() {
-    RepMateTheme(darkTheme = false) {
-        SignUpContent(
-            uiState = PREVIEW_LOADING_STATE,
-            onBackClick = {},
-            onEmailChanged = {},
-            onPasswordChanged = {},
-            onCreateAccountClick = {},
             onGoogleClick = {},
-            onLogInClick = {},
-        )
-    }
-}
-
-@Preview(name = "Dark - Loading overlay", showBackground = true, widthDp = 360, heightDp = 800)
-@Composable
-private fun SignUpScreenDarkLoadingPreview() {
-    RepMateTheme(darkTheme = true) {
-        SignUpContent(
-            uiState = PREVIEW_LOADING_STATE,
-            onBackClick = {},
-            onEmailChanged = {},
-            onPasswordChanged = {},
-            onCreateAccountClick = {},
-            onGoogleClick = {},
-            onLogInClick = {},
+            onForgotPasswordClick = {},
+            onSignUpClick = {},
         )
     }
 }
