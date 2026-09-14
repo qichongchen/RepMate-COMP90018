@@ -77,7 +77,8 @@ package com.repmate.engine
  *
  * ## ⚠️ What a lower duration margin does not fix
  * **In live testing the margin recovered 1 of 4 missed reps.** It is worth having, and it is
- * not the fix. The remaining gap is not a threshold problem.
+ * not the fix. Apart from the duration floor, covered below, the remaining gap is not a
+ * threshold problem.
  *
  * **Calibration and performance were two different populations.** In a 2026-09-14 session the
  * user's paced calibration reps averaged an amplitude of **7.0**; the set counted minutes
@@ -98,12 +99,13 @@ package com.repmate.engine
  * softest rep replayed at half force peaks at 10.26 against the 10.15 threshold. For
  * contrast, the same user's reps in a 2026-09-13 run measured 3.06–6.74.
  *
- * **For reps under 400 ms the floor binds before the margin does.**
- * [MIN_REP_DURATION_FLOOR_MS] clamps every derived duration floor up to 400 ms. A calibration
- * whose shortest rep is 380 ms derives 285 ms at 0.75 and is clamped straight back to 400,
- * which still rejects the 380 and 395 ms reps from the 09-13 run. The floor is kept at 400
- * regardless, for the reason above; on the four recorded traces it never binds (derived
- * values 482–674 ms).
+ * **The one threshold problem was the duration floor.** [MIN_REP_DURATION_FLOOR_MS] clamps
+ * every derived duration floor up to a fixed minimum. At 400 ms that minimum rejected genuine
+ * live reps of 300 and 320 ms whatever calibration derived: a calibration whose shortest rep
+ * was 380 ms derived 285 ms and was clamped straight back to 400. It is now 280 ms; see that
+ * constant for the measurements and for what a floor that low admits. Lowering it removes a
+ * block rather than guaranteeing a count, because the reps still have to clear whatever
+ * calibration derives.
  *
  * All live figures come from probe logs, not committed fixtures, so none can be reproduced
  * from this repository.
@@ -222,20 +224,33 @@ data class CalibrationProfile(
         const val MIN_AMPLITUDE_CEILING = 8.0f
 
         /**
-         * Floor for [minRepDurationMs].
+         * Floor for [minRepDurationMs]: **280 ms**.
          *
-         * Written on the premise that a squat's movement burst does not complete in under
-         * 400 ms. That holds for every recorded trace — the shortest recorded rep is 615 ms, so
-         * this floor never binds on them. Live data contradicts it: a 2026-09-13 run produced
-         * genuine reps of 380–420 ms, and this floor rejects them whatever the margin. It is the
-         * binding constraint for fast squatters; see "What a lower duration margin does not
-         * fix" in the class documentation.
+         * It was 400, on the premise that a squat's movement burst does not complete in under
+         * 400 ms. Every recorded trace agrees (the shortest recorded rep is 615 ms); live testing
+         * does not. Genuine live reps measured **300 ms** and **320 ms**, and a 400 ms floor
+         * rejects them whatever calibration derives, because it clamps any lower derived value
+         * back up. No margin, and no amount of calibrating at a natural pace, could have
+         * recovered them. 280 sits 20 ms under the shortest genuine rep measured.
          *
-         * Kept at 400 deliberately rather than lowered. Those reps expose a mismatch between how
-         * a user calibrates and how they then perform, which guidance has to close; a lower
-         * floor would only move the threshold for one symptom of it.
+         * **Necessary, not sufficient.** The floor only stops blocking such reps; whether one is
+         * counted still depends on what calibration derives. A 300 ms rep survives only if the
+         * shortest calibration rep is 400 ms or less (400 x 0.75 = 300). Calibrate at a slower
+         * pace — a 500 ms shortest rep, say — and the derived 375 ms rejects both measured reps
+         * again. That is the guidance half of the problem described in the class documentation.
+         *
+         * **What a floor this low admits, checked on the four recorded squat traces.** None of
+         * them derives a floor anywhere near it (482–674 ms), so through calibration the change
+         * alters nothing on them. To see what a detector actually running at 280 ms lets in, each
+         * trace was replayed at that value directly. Every set window still counts 10 of 10 and
+         * both quiet windows stay empty: no spurious rep appears inside a set. Over whole
+         * recordings it admits phone-handling bursts outside the set — with default guards, one
+         * on `squat_10_fast` (282 ms, amplitude 1.24) and one on `squat_10_lisa` (312 ms, 1.01);
+         * with calibrated guards, two on `squat_10_hit` before its set starts (553 ms, 0.86 and
+         * 588 ms, 7.03). Trimming handling bursts is a session-boundary job rather than this
+         * guard's, so that is the accepted cost.
          */
-        const val MIN_REP_DURATION_FLOOR_MS = 400L
+        const val MIN_REP_DURATION_FLOOR_MS = 280L
 
         /**
          * Ceiling for [minRepDurationMs]. A floor above this would reject ordinary reps: it
