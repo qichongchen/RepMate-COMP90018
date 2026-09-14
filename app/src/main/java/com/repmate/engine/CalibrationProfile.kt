@@ -42,11 +42,31 @@ package com.repmate.engine
  *   excursion either way is 1.287, implying a worst plausible softening of 0.777. 0.65 sits
  *   16% below that. Fatigue makes later reps softer, so this margin is the one most likely
  *   to be exercised.
- * - [MIN_DURATION_MARGIN] = **0.85**. Bounded on both sides and the band is narrow: at most
- *   0.885, or Mohit's normal set loses its 615 ms rep; more than 0.826, or Hit's 743 ms
- *   wobble clears a threshold derived from his 899 ms minimum — and for Hit this guard is
- *   the only one that can reject that wobble, because his calibrated amplitude floor lands
- *   at 0.67, below the wobble's 0.83.
+ * - [MIN_DURATION_MARGIN] = **0.75**: the derived floor sits a quarter below the shortest
+ *   calibration rep. It was 0.85, fitted tightly to the drift between the halves of the four
+ *   recorded sets, and that tight fit was the problem: **a calibration set is a sample, not a
+ *   bound.** The shortest of five prompted reps is not the shortest rep the user will
+ *   produce, and people squat faster in a real set than in a paced five-rep calibration. A
+ *   live run on 2026-09-13 showed exactly that: a natural pace near 1.2 s/rep, with genuine
+ *   reps of 380–420 ms rejected on duration while carrying the same amplitude as the reps
+ *   that were counted. The upper bound is unchanged — at most 0.885, or Mohit's normal set
+ *   loses its 615 ms rep.
+ *
+ *   **Checked against all four recorded squat traces** (profile derived from reps 1–5, then
+ *   replayed over the set window, the whole recording and the quiet window) at 0.70, 0.75,
+ *   0.80 and 0.85. All four margins behave identically: 10 of 10 in every set window, nothing
+ *   detected in either quiet window, and no window admitted or lost relative to 0.85. On the
+ *   data that exists, the extra ten points admit nothing.
+ *
+ *   **What it gives up is redundancy on Hit's wobble.** This note used to say the margin had
+ *   to stay above 0.826 because duration was the *only* guard that could reject Hit's 743 ms,
+ *   0.83-amplitude wobble under calibration. That was never true: his derived cooldown is
+ *   clamped to 900 ms and the wobble starts 778 ms after the preceding rep, so the cooldown
+ *   rejects it as well. At 0.85 both guards did (floor 764 ms). At 0.75 (floor 674 ms) only
+ *   the cooldown does, by 122 ms; replayed with the cooldown disabled, the wobble is counted
+ *   and Hit's set reads 11. The wobble is still rejected, but by a timing coincidence rather
+ *   than by two independent guards: the same wobble arriving more than 900 ms after a rep
+ *   would be counted.
  * - [MAX_DURATION_MARGIN] = **2.2**. Must exceed 1.214 (Hit lengthens 1296 -> 1573 ms) and
  *   stay under 4.03, or Lisa's 3153 ms settling burst — the thing
  *   [SquatRepDetector.maxRepDurationMs] exists to abandon — is admitted. 2.2 is the
@@ -54,6 +74,39 @@ package com.repmate.engine
  * - [COOLDOWN_MARGIN] = **0.75**. Only bounded above: a cooldown longer than the user's real
  *   gap eats reps, the bug that dropped the original 2000 ms cooldown. Worst contraction
  *   observed is 0.981; the symmetric worst case is 0.809; 0.75 sits below with 7% to spare.
+ *
+ * ## ⚠️ What a lower duration margin does not fix
+ * **In live testing the margin recovered 1 of 4 missed reps.** It is worth having, and it is
+ * not the fix. The remaining gap is not a threshold problem.
+ *
+ * **Calibration and performance were two different populations.** In a 2026-09-14 session the
+ * user's paced calibration reps averaged an amplitude of **7.0**; the set counted minutes
+ * later, by the same person on the same phone, averaged **1.3** and peaked at **1.99**. The
+ * calibration reps were slow and deep, the real set fast and shallow. Every threshold in a
+ * profile is derived from the first population and then applied to the second — the
+ * amplitude floor as much as the duration floor — and a margin sized for drift *within* a set
+ * is not built to bridge a gap *between* two kinds of rep. That mismatch has to be solved
+ * where it arises, by guidance: telling the user to calibrate at the pace and depth they
+ * actually train at. The margin and that guidance address different halves of the same
+ * problem; they are complementary, not alternatives.
+ *
+ * **Shallow reps also sit close to the trigger itself.** A rep that clears the 10.15 open
+ * threshold by only a little is at the mercy of the trigger, and a rep that does not clear it
+ * never opens a window for any guard to judge. Calibration cannot help there: the trigger
+ * thresholds are positions relative to gravity and are deliberately not calibrated (see
+ * `SquatRepDetector(profile)`). The recorded traces already showed this failure mode: Hit's
+ * softest rep replayed at half force peaks at 10.26 against the 10.15 threshold. For
+ * contrast, the same user's reps in a 2026-09-13 run measured 3.06–6.74.
+ *
+ * **For reps under 400 ms the floor binds before the margin does.**
+ * [MIN_REP_DURATION_FLOOR_MS] clamps every derived duration floor up to 400 ms. A calibration
+ * whose shortest rep is 380 ms derives 285 ms at 0.75 and is clamped straight back to 400,
+ * which still rejects the 380 and 395 ms reps from the 09-13 run. The floor is kept at 400
+ * regardless, for the reason above; on the four recorded traces it never binds (derived
+ * values 482–674 ms).
+ *
+ * All live figures come from probe logs, not committed fixtures, so none can be reproduced
+ * from this repository.
  *
  * ## Safety bounds
  * Margins protect against a user drifting during a set. They do **not** protect against a
@@ -125,7 +178,7 @@ data class CalibrationProfile(
 
         // --- Margins (see the class documentation for the derivation of each) -------------
         const val AMPLITUDE_MARGIN = 0.65f
-        const val MIN_DURATION_MARGIN = 0.85
+        const val MIN_DURATION_MARGIN = 0.75
         const val MAX_DURATION_MARGIN = 2.2
         const val COOLDOWN_MARGIN = 0.75
 
@@ -149,7 +202,7 @@ data class CalibrationProfile(
         // --- Safety bounds ---------------------------------------------------------------
         // Each range is bounded by physical plausibility on one side and by what the four
         // traces actually produce on the other. The derived values from those traces are
-        // minAmplitude 0.67-5.18, minRepDuration 546-764, maxRepDuration 1722-2851 and
+        // minAmplitude 0.67-5.18, minRepDuration 482-674, maxRepDuration 1722-2851 and
         // cooldown 747-2207, so only the cooldown ceiling binds on real data today.
 
         /**
@@ -169,15 +222,24 @@ data class CalibrationProfile(
         const val MIN_AMPLITUDE_CEILING = 8.0f
 
         /**
-         * Floor for [minRepDurationMs]: a squat's movement burst does not complete in under
-         * 400 ms. The shortest rep recorded is 615 ms; going below 400 would start admitting
-         * the wobbles the guard exists to reject.
+         * Floor for [minRepDurationMs].
+         *
+         * Written on the premise that a squat's movement burst does not complete in under
+         * 400 ms. That holds for every recorded trace — the shortest recorded rep is 615 ms, so
+         * this floor never binds on them. Live data contradicts it: a 2026-09-13 run produced
+         * genuine reps of 380–420 ms, and this floor rejects them whatever the margin. It is the
+         * binding constraint for fast squatters; see "What a lower duration margin does not
+         * fix" in the class documentation.
+         *
+         * Kept at 400 deliberately rather than lowered. Those reps expose a mismatch between how
+         * a user calibrates and how they then perform, which guidance has to close; a lower
+         * floor would only move the threshold for one symptom of it.
          */
         const val MIN_REP_DURATION_FLOOR_MS = 400L
 
         /**
          * Ceiling for [minRepDurationMs]. A floor above this would reject ordinary reps: it
-         * can only be reached from calibration reps longer than 1.4 s, and the guard would
+         * can only be reached from calibration reps of 1.6 s or longer, and the guard would
          * then be stricter than the slowest rep in the library (1573 ms) leaves room for.
          */
         const val MIN_REP_DURATION_CEILING_MS = 1200L
