@@ -18,36 +18,28 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.RepMate"
             android:windowSoftInputMode="adjustResize">
-            <!--
-              TEMPORARY: launcher moved to .SensorProbeActivity for sensor bring-up.
-              TO RESTORE: uncomment this intent-filter and delete the .SensorProbeActivity
-              entry below (and its Kotlin file). Only one activity should be the launcher,
-              otherwise the app installs two icons and Android Studio asks which to start.
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            -->
         </activity>
 
         <!--
-          ⚠️ TEMPORARY THROWAWAY — DELETE THIS WHOLE <activity> BLOCK, along with
-          SensorProbeActivity.kt, before the real workout UI lands. It exists only to verify
-          DeviceSensorSource on real hardware. See the KDoc in SensorProbeActivity.kt.
+          Sensor bring-up harness for the engine team, not part of the app's real navigation
+          flow, so it deliberately has no intent-filter and isn't the launcher. Still kept and
+          exported so it can be launched directly when someone needs to check the live sensor
+          pipeline on a device:
+              adb shell am start -n com.example.repmate/.SensorProbeActivity
+          (or add an Android Studio run configuration targeting this Activity specifically).
+          See the KDoc in SensorProbeActivity.kt for what it measures and when it's safe to
+          delete for good.
         -->
         <activity
             android:name=".SensorProbeActivity"
             android:exported="true"
             android:label="RepMate sensor probe"
-            android:theme="@style/Theme.RepMate">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:theme="@style/Theme.RepMate" />
     </application>
 
 </manifest>

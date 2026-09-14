@@ -34,6 +34,10 @@ android {
     }
     buildFeatures {
         compose = true
+        // Needed for BuildConfig.DEBUG, which gates the debug-only "open sensor probe" button on
+        // the home placeholder (see RepMateDestinations.HOME in NavGraph.kt). AGP 8+ makes
+        // BuildConfig generation opt-in, so this must be explicit.
+        buildConfig = true
     }
 }
 

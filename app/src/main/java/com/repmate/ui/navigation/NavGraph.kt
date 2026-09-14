@@ -1,5 +1,6 @@
 package com.repmate.ui.navigation
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -27,7 +29,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.repmate.BuildConfig
+import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
 import com.repmate.ui.components.RepMateButton
@@ -136,7 +141,21 @@ fun RepMateNavGraph(
             startDestination = RepMateDestinations.WELCOME,
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable(RepMateDestinations.WELCOME) { PlaceholderScreen(RepMateDestinations.WELCOME) }
+            composable(RepMateDestinations.WELCOME) {
+                WelcomeScreen(
+                    onSignUp = { navController.navigate(RepMateDestinations.SIGNUP) },
+                    onLogIn = { navController.navigate(RepMateDestinations.LOGIN) },
+                    onContinueAsGuest = {
+                        // TODO: wire to FirebaseAuth anonymous sign-in once data.repo exists.
+                        // For now, just proceed to onboarding so the flow is testable end to end.
+                        // welcome is popped off the back stack, same as the auth screens will be
+                        // once they're real, so the user can't land back on it via the back button.
+                        navController.navigate(RepMateDestinations.ONBOARDING) {
+                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                        }
+                    },
+                )
+            }
             composable(RepMateDestinations.SIGNUP) { PlaceholderScreen(RepMateDestinations.SIGNUP) }
             composable(RepMateDestinations.LOGIN) { PlaceholderScreen(RepMateDestinations.LOGIN) }
 
@@ -156,7 +175,7 @@ fun RepMateNavGraph(
                 )
             }
 
-            composable(RepMateDestinations.HOME) { PlaceholderScreen(RepMateDestinations.HOME) }
+            composable(RepMateDestinations.HOME) { HomePlaceholder() }
             composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
             composable(RepMateDestinations.LEADERBOARD) { PlaceholderScreen(RepMateDestinations.LEADERBOARD) }
             composable(RepMateDestinations.PROFILE) { PlaceholderScreen(RepMateDestinations.PROFILE) }
@@ -203,6 +222,33 @@ fun RepMateNavGraph(
                 // exerciseType == ExerciseType.JUMPING_JACK. Squats and push-ups don't need it.
                 LiveWorkoutPlaceholder(exerciseType = exerciseType, navController = navController)
             }
+        }
+    }
+}
+
+@Composable
+private fun HomePlaceholder(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(RepMateDestinations.HOME, style = MaterialTheme.typography.titleLarge)
+
+        if (BuildConfig.DEBUG) {
+            Spacer(modifier = Modifier.height(24.dp))
+            // Debug-only bridge to the engine team's sensor bring-up harness. SensorProbeActivity
+            // is a separate Activity that predates this nav graph, not a NavHost destination, so
+            // it's reached with a plain Intent rather than navController.navigate(). Gated on
+            // BuildConfig.DEBUG so it never ships in a release build; delete this block the same
+            // day SensorProbeActivity itself gets deleted.
+            RepMateButton(
+                text = "Open sensor probe (debug)",
+                onClick = { context.startActivity(Intent(context, SensorProbeActivity::class.java)) },
+                variant = RepMateButtonVariant.Ghost,
+            )
         }
     }
 }
