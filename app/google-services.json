@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "115300933469",
+    "project_id": "repmate-556ae",
+    "storage_bucket": "repmate-556ae.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:115300933469:android:15f3227e1dd5bd84bdd2b4",
+        "android_client_info": {
+          "package_name": "com.example.repmate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEBjAwQIm1T9OdhdTa97Sf81WEqGjrGpE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
