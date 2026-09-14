@@ -41,6 +41,11 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
+    // Bottom nav (Home/History/Leaderboard/Profile) and the exercise chip's play-triangle need
+    // icons beyond the small "core" set (Home, Person, PlayArrow); the trophy and history icons
+    // only live in the extended pack, so pull that in instead of hand-drawing two glyphs.
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
