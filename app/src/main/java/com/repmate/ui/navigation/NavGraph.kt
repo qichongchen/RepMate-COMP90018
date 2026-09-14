@@ -32,6 +32,7 @@ import androidx.navigation.navArgument
 import com.example.repmate.BuildConfig
 import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.auth.SignUpScreen
 import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
@@ -156,7 +157,26 @@ fun RepMateNavGraph(
                     },
                 )
             }
-            composable(RepMateDestinations.SIGNUP) { PlaceholderScreen(RepMateDestinations.SIGNUP) }
+            composable(RepMateDestinations.SIGNUP) {
+                SignUpScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onSignUpSuccess = {
+                        // Same convention as guest sign-in: once actually authenticated, welcome
+                        // (and the whole pre-auth stack) is gone -- back from onboarding should
+                        // never return to a sign-up form for an account that already exists now.
+                        navController.navigate(RepMateDestinations.ONBOARDING) {
+                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                        }
+                    },
+                    onLogInClick = {
+                        // Replaces this screen on the back stack rather than stacking on top of
+                        // it, so back from Log in returns to Welcome, not bounces through Signup.
+                        navController.navigate(RepMateDestinations.LOGIN) {
+                            popUpTo(RepMateDestinations.SIGNUP) { inclusive = true }
+                        }
+                    },
+                )
+            }
             composable(RepMateDestinations.LOGIN) { PlaceholderScreen(RepMateDestinations.LOGIN) }
 
             composable(RepMateDestinations.ONBOARDING) {

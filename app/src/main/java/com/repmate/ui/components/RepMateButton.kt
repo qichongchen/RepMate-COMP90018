@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -53,6 +54,10 @@ enum class RepMateIconPosition {
  * @param enabled whether the button responds to taps.
  * @param icon optional icon, e.g. a chevron on a "Next" button.
  * @param iconPosition where [icon] sits relative to [text]; defaults to leading.
+ *
+ * NOTE: no `loading` state here -- an in-flight request (e.g. a Firebase call) is represented
+ * with [com.repmate.ui.components.LoadingOverlay] instead, a full-screen blocking indicator, not
+ * a per-button spinner. Callers should still pass `enabled = false` while a request is running.
  */
 @Composable
 fun RepMateButton(
