@@ -70,7 +70,7 @@ class FormScorerTest {
 
         val result = scorer.score(current, profile, previousReps = previous)
 
-        assertTrue(result.reasons.contains("inconsistent with your other reps"))
+        assertTrue(result.reasons.contains("inconsistent with your calibrated depth"))
     }
 
     @Test
@@ -80,7 +80,26 @@ class FormScorerTest {
 
         val result = scorer.score(current, profile, previousReps = previous)
 
-        assertTrue(!result.reasons.contains("inconsistent with your other reps"))
+        assertTrue(!result.reasons.contains("inconsistent with your calibrated depth"))
+    }
+
+    @Test
+    fun `uniformly shallow session is flagged even though the reps match each other`() {
+        // Regression test for Mohit's PR #3 review comment (2026-09-14): all three reps are
+        // within 10% of each other (internally "consistent"), but all sit around half of
+        // softestSampleAmplitude (2.0f) -- i.e. a uniformly bad set. The old formula compared
+        // reps only to their own session mean/spread and would have missed this entirely
+        // (near-zero internal spread); scoring against the calibration reference instead
+        // catches it.
+        val previous = listOf(
+            RepEvent(index = 0, startMs = 0L, endMs = 1100L, amplitude = 1.0f),
+            RepEvent(index = 1, startMs = 2000L, endMs = 3100L, amplitude = 1.05f)
+        )
+        val current = RepEvent(index = 2, startMs = 4000L, endMs = 5100L, amplitude = 0.95f)
+
+        val result = scorer.score(current, profile, previousReps = previous)
+
+        assertTrue(result.reasons.contains("inconsistent with your calibrated depth"))
     }
 
     @Test

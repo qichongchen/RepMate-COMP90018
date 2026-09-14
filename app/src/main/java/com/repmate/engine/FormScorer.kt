@@ -1,7 +1,7 @@
 package com.repmate.engine
 
+import kotlin.math.abs
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
 /**
  * Turns one detected [RepEvent] into a 0-10 [RepScore], judging movement quality
@@ -21,9 +21,13 @@ import kotlin.math.sqrt
  * - **Tempo**: rep duration compared against the
  *   [CalibrationProfile.shortestSampleMs]/[CalibrationProfile.longestSampleMs] window
  *   observed during calibration.
- * - **Consistency**: a soft check against the amplitudes of reps already scored earlier in
- *   the *same session* ([previousReps]), once there are at least
- *   [MIN_HISTORY_FOR_CONSISTENCY] of them.
+ * - **Consistency**: how far this session's reps deviate, on average, from the *same*
+ *   calibration reference depth scoring already uses, once there are at least
+ *   [MIN_HISTORY_FOR_CONSISTENCY] of them. Deliberately anchored to the calibration
+ *   reference rather than the session's own mean/spread — an earlier version compared reps
+ *   only to each other, which let a uniformly shallow set (near-zero internal spread) score
+ *   as "consistent" even though every rep was equally far from a good depth. (Caught in
+ *   PR #3 review by Mohit, 2026-09-14 — see the regression test in FormScorerTest.)
  * - **Pause is NOT implemented.** [RepEvent] only carries `startMs`/`endMs`/`amplitude` for
  *   the whole movement burst. [SquatRepDetector] cannot separate descent from ascent (its
  *   own KDoc explains why — magnitude is direction-blind), so there is no timestamp
@@ -96,17 +100,18 @@ class FormScorer {
             else -> reasons += "good tempo"
         }
 
-        // --- Consistency (soft check against this session's own history) ----------------
+        // --- Consistency (soft check against the calibration reference, NOT this session's
+        // own mean/spread -- see class KDoc for why that distinction matters) --------------
         if (previousReps.size >= MIN_HISTORY_FOR_CONSISTENCY) {
             val amplitudes = previousReps.map { it.amplitude } + rep.amplitude
-            val mean = amplitudes.average().toFloat()
-            val variance = amplitudes.sumOf { ((it - mean) * (it - mean)).toDouble() } / amplitudes.size
-            val stdDev = sqrt(variance).toFloat()
-            val relativeSpread = if (mean > 0f) stdDev / mean else 0f
+            val meanRelativeDeviation = amplitudes
+                .map { abs(it - referenceAmplitude) / referenceAmplitude }
+                .average()
+                .toFloat()
 
-            if (relativeSpread > CONSISTENCY_SPREAD_THRESHOLD) {
+            if (meanRelativeDeviation > CONSISTENCY_DEVIATION_THRESHOLD) {
                 score -= CONSISTENCY_WEIGHT
-                reasons += "inconsistent with your other reps"
+                reasons += "inconsistent with your calibrated depth"
             }
         }
 
@@ -131,7 +136,13 @@ class FormScorer {
         private const val CONSISTENCY_WEIGHT = 1.5f
 
         private const val MIN_HISTORY_FOR_CONSISTENCY = 2
-        private const val CONSISTENCY_SPREAD_THRESHOLD = 0.35f
+
+        // Average relative deviation (|amplitude - referenceAmplitude| / referenceAmplitude)
+        // across the session's reps, above which the set is flagged as inconsistent.
+        // Anchored to the calibration reference rather than the session's own mean -- see
+        // class KDoc. Same numeric value carried over from the first pass; still an
+        // unvalidated guess, not checked against real data.
+        private const val CONSISTENCY_DEVIATION_THRESHOLD = 0.35f
 
         // Used only when the user has no CalibrationProfile yet. Not measured from any
         // trace -- a placeholder pending an "uncalibrated user" decision with Mohit.
