@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.example.repmate.data.RepMateDatabase
 import com.example.repmate.data.TestDao
+import com.repmate.data.local.SessionDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,7 +25,9 @@ object DatabaseModule {
             context,
             RepMateDatabase::class.java,
             "repmate_database"
-        ).build()
+        )
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .build()
     }
 
     @Provides
@@ -32,5 +35,12 @@ object DatabaseModule {
         database: RepMateDatabase
     ): TestDao {
         return database.testDao()
+    }
+
+    @Provides
+    fun provideSessionDao(
+        database: RepMateDatabase
+    ): SessionDao {
+        return database.sessionDao()
     }
 }

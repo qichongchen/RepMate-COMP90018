@@ -57,6 +57,7 @@ dependencies {
     // The Kotlin Gradle plugin picks that variant automatically; AGP's built-in Kotlin
     // support does not, so it is named explicitly here.
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
