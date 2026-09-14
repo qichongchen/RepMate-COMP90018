@@ -1,6 +1,7 @@
 package com.repmate.ui.navigation
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,7 @@ import androidx.navigation.navArgument
 import com.example.repmate.BuildConfig
 import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.auth.ForgotPasswordScreen
 import com.repmate.ui.auth.LogInScreen
 import com.repmate.ui.auth.SignUpScreen
 import com.repmate.ui.auth.WelcomeScreen
@@ -59,11 +61,19 @@ object RepMateDestinations {
 
     const val ARG_EXERCISE_TYPE = "exerciseType"
     const val ARG_SESSION_ID = "sessionId"
+    const val ARG_EMAIL = "email"
 
     /** Route patterns for [NavHost]'s `composable(route = ...)` registration. */
     const val CALIBRATION = "calibration/{$ARG_EXERCISE_TYPE}"
     const val LIVE_WORKOUT = "live_workout/{$ARG_EXERCISE_TYPE}"
     const val MOTION_REPLAY = "motion_replay/{$ARG_SESSION_ID}"
+
+    /**
+     * `email` is an optional query param (`?email={email}`), not a required path segment: this
+     * screen is also reachable without one (any future "forgot password" entry point that isn't
+     * a failed LogIn attempt), in which case it just starts with a blank field.
+     */
+    const val FORGOT_PASSWORD = "forgot_password?$ARG_EMAIL={$ARG_EMAIL}"
 
     /** Concrete routes for [NavHostController.navigate] call sites. */
     fun calibration(exerciseType: ExerciseType) = "calibration/${exerciseType.name}"
@@ -71,6 +81,13 @@ object RepMateDestinations {
     fun liveWorkout(exerciseType: ExerciseType) = "live_workout/${exerciseType.name}"
 
     fun motionReplay(sessionId: String) = "motion_replay/$sessionId"
+
+    fun forgotPassword(email: String? = null): String =
+        if (email.isNullOrBlank()) {
+            "forgot_password"
+        } else {
+            "forgot_password?$ARG_EMAIL=${Uri.encode(email)}"
+        }
 
     /** The destinations [BottomNavBar] switches between -- these are shown with the bar visible. */
     val BOTTOM_NAV_ROUTES = setOf(HOME, HISTORY, LEADERBOARD, PROFILE)
@@ -188,9 +205,8 @@ fun RepMateNavGraph(
                             popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
                         }
                     },
-                    onForgotPasswordClick = {
-                        // TODO: navigate to a password-reset flow once that screen/route exists.
-                        // Not blocking LogInScreen on it per the explicit call to stub this.
+                    onForgotPasswordClick = { email ->
+                        navController.navigate(RepMateDestinations.forgotPassword(email))
                     },
                     onSignUpClick = {
                         // Mirrors Signup's "Log in" link: replaces this screen on the back stack
@@ -200,6 +216,23 @@ fun RepMateNavGraph(
                             popUpTo(RepMateDestinations.LOGIN) { inclusive = true }
                         }
                     },
+                )
+            }
+
+            composable(
+                route = RepMateDestinations.FORGOT_PASSWORD,
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_EMAIL) {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+            ) { backStackEntry ->
+                ForgotPasswordScreen(
+                    initialEmail = backStackEntry.arguments?.getString(RepMateDestinations.ARG_EMAIL).orEmpty(),
+                    onBackClick = { navController.popBackStack() },
                 )
             }
 

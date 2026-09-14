@@ -47,14 +47,15 @@ import kotlinx.coroutines.launch
  *
  * @param onBackClick invoked when the back chevron is tapped.
  * @param onLogInSuccess invoked once, after either auth path succeeds.
- * @param onForgotPasswordClick invoked when "Forgot password?" is tapped.
+ * @param onForgotPasswordClick invoked when "Forgot password?" is tapped, with whatever email is
+ *   currently typed in the form -- ForgotPasswordScreen prefills its own field with it.
  * @param onSignUpClick invoked when the "Sign up" link at the bottom is tapped.
  */
 @Composable
 fun LogInScreen(
     onBackClick: () -> Unit,
     onLogInSuccess: () -> Unit,
-    onForgotPasswordClick: () -> Unit,
+    onForgotPasswordClick: (String) -> Unit,
     onSignUpClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel(),
@@ -73,6 +74,9 @@ fun LogInScreen(
         onEmailChanged = viewModel::onEmailChanged,
         onPasswordChanged = viewModel::onPasswordChanged,
         onLogInClick = viewModel::onLogInClicked,
+        // TODO: Google Sign-In requires Firebase console config (SHA-1/SHA-256 fingerprint +
+        // Google provider enabled) — confirm with Lisa this is set up before testing on a real
+        // device/signed build.
         onGoogleClick = {
             coroutineScope.launch {
                 viewModel.onGoogleSignInStarted()
@@ -87,7 +91,7 @@ fun LogInScreen(
                     }
             }
         },
-        onForgotPasswordClick = onForgotPasswordClick,
+        onForgotPasswordClick = { onForgotPasswordClick(uiState.email) },
         onSignUpClick = onSignUpClick,
         modifier = modifier,
     )

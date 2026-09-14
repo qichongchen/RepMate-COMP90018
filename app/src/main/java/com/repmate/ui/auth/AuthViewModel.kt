@@ -1,6 +1,5 @@
 package com.repmate.ui.auth
 
-import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseNetworkException
@@ -91,7 +90,7 @@ class AuthViewModel
          */
         fun onCreateAccountClicked() {
             val state = _uiState.value
-            val emailError = validateEmail(state.email)
+            val emailError = validateEmailFormat(state.email)
             val passwordError = validateNewPassword(state.password)
             if (emailError != null || passwordError != null) {
                 _uiState.update { it.copy(emailError = emailError, passwordError = passwordError) }
@@ -125,7 +124,7 @@ class AuthViewModel
          */
         fun onLogInClicked() {
             val state = _uiState.value
-            val emailError = validateEmail(state.email)
+            val emailError = validateEmailFormat(state.email)
             val passwordError = validateExistingPassword(state.password)
             if (emailError != null || passwordError != null) {
                 _uiState.update { it.copy(emailError = emailError, passwordError = passwordError) }
@@ -160,6 +159,9 @@ class AuthViewModel
          * came from -- `signInWithCredential` transparently creates the account if this Google
          * identity is new, or logs in if it isn't, so sign-up and log-in need no separate paths.
          */
+        // TODO: Google Sign-In requires Firebase console config (SHA-1/SHA-256 fingerprint +
+        // Google provider enabled) — confirm with Lisa this is set up before testing on a real
+        // device/signed build.
         fun onGoogleIdTokenReceived(idToken: String) {
             viewModelScope.launch {
                 try {
@@ -201,13 +203,6 @@ class AuthViewModel
         private fun failGoogle(message: String) {
             _uiState.update { it.copy(isGoogleLoading = false, generalError = message) }
         }
-
-        private fun validateEmail(email: String): String? =
-            when {
-                email.isBlank() -> "Enter your email."
-                !Patterns.EMAIL_ADDRESS.matcher(email).matches() -> "Enter a valid email address."
-                else -> null
-            }
 
         private fun validateNewPassword(password: String): String? =
             when {
