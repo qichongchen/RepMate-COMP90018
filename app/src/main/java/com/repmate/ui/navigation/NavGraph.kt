@@ -1,5 +1,7 @@
 package com.repmate.ui.navigation
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -27,7 +30,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.repmate.BuildConfig
+import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.auth.ForgotPasswordScreen
+import com.repmate.ui.auth.LogInScreen
+import com.repmate.ui.auth.SignUpScreen
+import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
 import com.repmate.ui.components.RepMateButton
@@ -52,11 +61,19 @@ object RepMateDestinations {
 
     const val ARG_EXERCISE_TYPE = "exerciseType"
     const val ARG_SESSION_ID = "sessionId"
+    const val ARG_EMAIL = "email"
 
     /** Route patterns for [NavHost]'s `composable(route = ...)` registration. */
     const val CALIBRATION = "calibration/{$ARG_EXERCISE_TYPE}"
     const val LIVE_WORKOUT = "live_workout/{$ARG_EXERCISE_TYPE}"
     const val MOTION_REPLAY = "motion_replay/{$ARG_SESSION_ID}"
+
+    /**
+     * `email` is an optional query param (`?email={email}`), not a required path segment: this
+     * screen is also reachable without one (any future "forgot password" entry point that isn't
+     * a failed LogIn attempt), in which case it just starts with a blank field.
+     */
+    const val FORGOT_PASSWORD = "forgot_password?$ARG_EMAIL={$ARG_EMAIL}"
 
     /** Concrete routes for [NavHostController.navigate] call sites. */
     fun calibration(exerciseType: ExerciseType) = "calibration/${exerciseType.name}"
@@ -64,6 +81,13 @@ object RepMateDestinations {
     fun liveWorkout(exerciseType: ExerciseType) = "live_workout/${exerciseType.name}"
 
     fun motionReplay(sessionId: String) = "motion_replay/$sessionId"
+
+    fun forgotPassword(email: String? = null): String =
+        if (email.isNullOrBlank()) {
+            "forgot_password"
+        } else {
+            "forgot_password?$ARG_EMAIL=${Uri.encode(email)}"
+        }
 
     /** The destinations [BottomNavBar] switches between -- these are shown with the bar visible. */
     val BOTTOM_NAV_ROUTES = setOf(HOME, HISTORY, LEADERBOARD, PROFILE)
@@ -136,9 +160,81 @@ fun RepMateNavGraph(
             startDestination = RepMateDestinations.WELCOME,
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable(RepMateDestinations.WELCOME) { PlaceholderScreen(RepMateDestinations.WELCOME) }
-            composable(RepMateDestinations.SIGNUP) { PlaceholderScreen(RepMateDestinations.SIGNUP) }
-            composable(RepMateDestinations.LOGIN) { PlaceholderScreen(RepMateDestinations.LOGIN) }
+            composable(RepMateDestinations.WELCOME) {
+                WelcomeScreen(
+                    onSignUp = { navController.navigate(RepMateDestinations.SIGNUP) },
+                    onLogIn = { navController.navigate(RepMateDestinations.LOGIN) },
+                    onContinueAsGuest = {
+                        // TODO: wire to FirebaseAuth anonymous sign-in once data.repo exists.
+                        // For now, just proceed to onboarding so the flow is testable end to end.
+                        // welcome is popped off the back stack, same as the auth screens will be
+                        // once they're real, so the user can't land back on it via the back button.
+                        navController.navigate(RepMateDestinations.ONBOARDING) {
+                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            composable(RepMateDestinations.SIGNUP) {
+                SignUpScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onSignUpSuccess = {
+                        // Same convention as guest sign-in: once actually authenticated, welcome
+                        // (and the whole pre-auth stack) is gone -- back from onboarding should
+                        // never return to a sign-up form for an account that already exists now.
+                        navController.navigate(RepMateDestinations.ONBOARDING) {
+                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                        }
+                    },
+                    onLogInClick = {
+                        // Replaces this screen on the back stack rather than stacking on top of
+                        // it, so back from Log in returns to Welcome, not bounces through Signup.
+                        navController.navigate(RepMateDestinations.LOGIN) {
+                            popUpTo(RepMateDestinations.SIGNUP) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            composable(RepMateDestinations.LOGIN) {
+                LogInScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onLogInSuccess = {
+                        // Returning user: straight to home, not onboarding -- that's the
+                        // first-time-only explainer flow, per the engine/product side.
+                        navController.navigate(RepMateDestinations.HOME) {
+                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                        }
+                    },
+                    onForgotPasswordClick = { email ->
+                        navController.navigate(RepMateDestinations.forgotPassword(email))
+                    },
+                    onSignUpClick = {
+                        // Mirrors Signup's "Log in" link: replaces this screen on the back stack
+                        // rather than stacking on top of it, so back from Sign up returns to
+                        // Welcome, not bounces through Login.
+                        navController.navigate(RepMateDestinations.SIGNUP) {
+                            popUpTo(RepMateDestinations.LOGIN) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            composable(
+                route = RepMateDestinations.FORGOT_PASSWORD,
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_EMAIL) {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+            ) { backStackEntry ->
+                ForgotPasswordScreen(
+                    initialEmail = backStackEntry.arguments?.getString(RepMateDestinations.ARG_EMAIL).orEmpty(),
+                    onBackClick = { navController.popBackStack() },
+                )
+            }
 
             composable(RepMateDestinations.ONBOARDING) {
                 OnboardingPlaceholder(
@@ -156,7 +252,7 @@ fun RepMateNavGraph(
                 )
             }
 
-            composable(RepMateDestinations.HOME) { PlaceholderScreen(RepMateDestinations.HOME) }
+            composable(RepMateDestinations.HOME) { HomePlaceholder() }
             composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
             composable(RepMateDestinations.LEADERBOARD) { PlaceholderScreen(RepMateDestinations.LEADERBOARD) }
             composable(RepMateDestinations.PROFILE) { PlaceholderScreen(RepMateDestinations.PROFILE) }
@@ -203,6 +299,33 @@ fun RepMateNavGraph(
                 // exerciseType == ExerciseType.JUMPING_JACK. Squats and push-ups don't need it.
                 LiveWorkoutPlaceholder(exerciseType = exerciseType, navController = navController)
             }
+        }
+    }
+}
+
+@Composable
+private fun HomePlaceholder(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(RepMateDestinations.HOME, style = MaterialTheme.typography.titleLarge)
+
+        if (BuildConfig.DEBUG) {
+            Spacer(modifier = Modifier.height(24.dp))
+            // Debug-only bridge to the engine team's sensor bring-up harness. SensorProbeActivity
+            // is a separate Activity that predates this nav graph, not a NavHost destination, so
+            // it's reached with a plain Intent rather than navController.navigate(). Gated on
+            // BuildConfig.DEBUG so it never ships in a release build; delete this block the same
+            // day SensorProbeActivity itself gets deleted.
+            RepMateButton(
+                text = "Open sensor probe (debug)",
+                onClick = { context.startActivity(Intent(context, SensorProbeActivity::class.java)) },
+                variant = RepMateButtonVariant.Ghost,
+            )
         }
     }
 }
