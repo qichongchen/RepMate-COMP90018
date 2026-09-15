@@ -43,6 +43,7 @@ import com.repmate.ui.home.CalibrationGateViewModel
 import com.repmate.ui.home.HomeScreen
 import com.repmate.ui.onboarding.OnboardingGateViewModel
 import com.repmate.ui.onboarding.OnboardingScreen
+import com.repmate.ui.profile.ProfileScreen
 import com.repmate.ui.theme.RepMateTheme
 import kotlinx.coroutines.launch
 
@@ -287,7 +288,21 @@ fun RepMateNavGraph(
             }
             composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
             composable(RepMateDestinations.LEADERBOARD) { PlaceholderScreen(RepMateDestinations.LEADERBOARD) }
-            composable(RepMateDestinations.PROFILE) { PlaceholderScreen(RepMateDestinations.PROFILE) }
+            composable(RepMateDestinations.PROFILE) {
+                ProfileScreen(
+                    onSignedOut = {
+                        // Numeric popUpTo(0), not popUpTo(RepMateDestinations.WELCOME): by the time a
+                        // user reaches Profile, Welcome has typically already been popped off the back
+                        // stack by navigateAfterAuthSuccess above, so a route-based popUpTo targeting it
+                        // would find nothing to pop. popUpTo(0) clears the entire back stack regardless
+                        // of what's on it, so a signed-out user can never navigate back into an
+                        // authenticated screen.
+                        navController.navigate(RepMateDestinations.WELCOME) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                )
+            }
 
             composable(
                 route = RepMateDestinations.MOTION_REPLAY,
