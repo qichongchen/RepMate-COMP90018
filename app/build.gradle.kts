@@ -121,4 +121,8 @@ dependencies {
         implementation(libs.androidx.credentials)
         implementation(libs.androidx.credentials.play.services.auth)
         implementation(libs.googleid)
+
+    // Per-UID onboarding-shown flag (OnboardingPreferences) -- Preferences DataStore, not
+    // Firestore, since this is purely local/on-device state.
+    implementation(libs.androidx.datastore.preferences)
 }

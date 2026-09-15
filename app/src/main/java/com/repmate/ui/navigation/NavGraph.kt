@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -40,6 +42,9 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
 import com.repmate.ui.components.RepMateButton
+import com.repmate.ui.onboarding.OnboardingGateViewModel
+import com.repmate.ui.onboarding.OnboardingScreen
+import kotlinx.coroutines.launch
 import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.theme.RepMateTheme
 
@@ -129,6 +134,31 @@ fun RepMateNavGraph(
 ) {
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
+    // Scoped to this composable (effectively the whole app session, since RepMateNavGraph is
+    // called once from MainActivity, not from inside a NavHost destination) rather than to any
+    // one screen -- it's used identically by all three "just authenticated" success callbacks
+    // below, not owned by any single one of them.
+    val onboardingGateViewModel: OnboardingGateViewModel = hiltViewModel()
+    val coroutineScope = rememberCoroutineScope()
+
+    // The one place that decides "onboarding or home" after sign-up, log-in, or guest sign-in
+    // all succeed -- so none of the three hardcodes a destination the way LogIn used to
+    // (unconditionally HOME, which was wrong for a first-time log-in on a new device) or SignUp
+    // used to (unconditionally ONBOARDING, which would replay it for a returning user).
+    val navigateAfterAuthSuccess: () -> Unit = {
+        coroutineScope.launch {
+            val destination =
+                if (onboardingGateViewModel.hasCurrentUserSeenOnboarding()) {
+                    RepMateDestinations.HOME
+                } else {
+                    RepMateDestinations.ONBOARDING
+                }
+            navController.navigate(destination) {
+                popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         bottomBar = {
@@ -164,28 +194,13 @@ fun RepMateNavGraph(
                 WelcomeScreen(
                     onSignUp = { navController.navigate(RepMateDestinations.SIGNUP) },
                     onLogIn = { navController.navigate(RepMateDestinations.LOGIN) },
-                    onContinueAsGuest = {
-                        // TODO: wire to FirebaseAuth anonymous sign-in once data.repo exists.
-                        // For now, just proceed to onboarding so the flow is testable end to end.
-                        // welcome is popped off the back stack, same as the auth screens will be
-                        // once they're real, so the user can't land back on it via the back button.
-                        navController.navigate(RepMateDestinations.ONBOARDING) {
-                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
-                        }
-                    },
+                    onGuestSignInSuccess = navigateAfterAuthSuccess,
                 )
             }
             composable(RepMateDestinations.SIGNUP) {
                 SignUpScreen(
                     onBackClick = { navController.popBackStack() },
-                    onSignUpSuccess = {
-                        // Same convention as guest sign-in: once actually authenticated, welcome
-                        // (and the whole pre-auth stack) is gone -- back from onboarding should
-                        // never return to a sign-up form for an account that already exists now.
-                        navController.navigate(RepMateDestinations.ONBOARDING) {
-                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
-                        }
-                    },
+                    onSignUpSuccess = navigateAfterAuthSuccess,
                     onLogInClick = {
                         // Replaces this screen on the back stack rather than stacking on top of
                         // it, so back from Log in returns to Welcome, not bounces through Signup.
@@ -198,13 +213,7 @@ fun RepMateNavGraph(
             composable(RepMateDestinations.LOGIN) {
                 LogInScreen(
                     onBackClick = { navController.popBackStack() },
-                    onLogInSuccess = {
-                        // Returning user: straight to home, not onboarding -- that's the
-                        // first-time-only explainer flow, per the engine/product side.
-                        navController.navigate(RepMateDestinations.HOME) {
-                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
-                        }
-                    },
+                    onLogInSuccess = navigateAfterAuthSuccess,
                     onForgotPasswordClick = { email ->
                         navController.navigate(RepMateDestinations.forgotPassword(email))
                     },
@@ -237,14 +246,14 @@ fun RepMateNavGraph(
             }
 
             composable(RepMateDestinations.ONBOARDING) {
-                OnboardingPlaceholder(
-                    onFinished = {
-                        // NOTE: onboarding goes straight to home once its 3 explainer pages are done.
-                        // Calibration is deliberately NOT triggered from here -- confirmed with the
-                        // engine side that calibration should run lazily, the first time someone
-                        // attempts an exercise with no profile yet (see the live_workout check below),
-                        // not as a blanket step after onboarding. If that policy ever changes, this is
-                        // the one line to edit.
+                OnboardingScreen(
+                    onFinish = {
+                        // NOTE: onboarding goes straight to home once its 3 explainer pages are done
+                        // (or Skip is tapped). Calibration is deliberately NOT triggered from here --
+                        // confirmed with the engine side that calibration should run lazily, the
+                        // first time someone attempts an exercise with no profile yet (see the
+                        // live_workout check below), not as a blanket step after onboarding. If that
+                        // policy ever changes, this is the one line to edit.
                         navController.navigate(RepMateDestinations.HOME) {
                             popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
                         }
@@ -327,23 +336,6 @@ private fun HomePlaceholder(modifier: Modifier = Modifier) {
                 variant = RepMateButtonVariant.Ghost,
             )
         }
-    }
-}
-
-@Composable
-private fun OnboardingPlaceholder(
-    onFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(RepMateDestinations.ONBOARDING, style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(24.dp))
-        // Stands in for "the user swiped through all 3 explainer pages" until that flow is built.
-        RepMateButton(text = "Continue", onClick = onFinished)
     }
 }
 
