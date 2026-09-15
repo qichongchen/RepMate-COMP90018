@@ -1,6 +1,5 @@
 package com.repmate.ui.navigation
 
-import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,7 +19,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -32,8 +30,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.repmate.BuildConfig
-import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
 import com.repmate.ui.auth.ForgotPasswordScreen
 import com.repmate.ui.auth.LogInScreen
@@ -42,11 +38,13 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
 import com.repmate.ui.components.RepMateButton
+import com.repmate.ui.components.RepMateButtonVariant
+import com.repmate.ui.home.CalibrationGateViewModel
+import com.repmate.ui.home.HomeScreen
 import com.repmate.ui.onboarding.OnboardingGateViewModel
 import com.repmate.ui.onboarding.OnboardingScreen
-import kotlinx.coroutines.launch
-import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.theme.RepMateTheme
+import kotlinx.coroutines.launch
 
 /**
  * Every route RepMate navigates between, plus the small helpers for building/parsing the ones
@@ -139,6 +137,10 @@ fun RepMateNavGraph(
     // one screen -- it's used identically by all three "just authenticated" success callbacks
     // below, not owned by any single one of them.
     val onboardingGateViewModel: OnboardingGateViewModel = hiltViewModel()
+    // Same reasoning as onboardingGateViewModel above: one instance, used by both Home's
+    // exercise-chip tap and live_workout's own entry check, rather than each owning a separate
+    // "is this exercise calibrated" mechanism.
+    val calibrationGateViewModel: CalibrationGateViewModel = hiltViewModel()
     val coroutineScope = rememberCoroutineScope()
 
     // The one place that decides "onboarding or home" after sign-up, log-in, or guest sign-in
@@ -261,7 +263,28 @@ fun RepMateNavGraph(
                 )
             }
 
-            composable(RepMateDestinations.HOME) { HomePlaceholder() }
+            composable(RepMateDestinations.HOME) {
+                HomeScreen(
+                    onExerciseSelected = { exerciseType ->
+                        // Real logic, not a stub: this always resolves to CALIBRATION right now
+                        // only because CalibrationGateViewModel's backing check is itself stubbed
+                        // to always report false (no Room table for calibration profiles yet) --
+                        // see StubCalibrationRepository. The branch itself is real, so a chip tap
+                        // for an already-calibrated exercise correctly goes straight to
+                        // live_workout the moment that stub is replaced with a real query.
+                        coroutineScope.launch {
+                            val destination =
+                                if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
+                                    RepMateDestinations.liveWorkout(exerciseType)
+                                } else {
+                                    RepMateDestinations.calibration(exerciseType)
+                                }
+                            navController.navigate(destination)
+                        }
+                    },
+                    onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                )
+            }
             composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
             composable(RepMateDestinations.LEADERBOARD) { PlaceholderScreen(RepMateDestinations.LEADERBOARD) }
             composable(RepMateDestinations.PROFILE) { PlaceholderScreen(RepMateDestinations.PROFILE) }
@@ -306,35 +329,12 @@ fun RepMateNavGraph(
                 // jack) for the whole set -- a hard requirement from Mohit on the engine side, not
                 // optional. Not implemented yet; wire it in when this becomes a real screen, gated on
                 // exerciseType == ExerciseType.JUMPING_JACK. Squats and push-ups don't need it.
-                LiveWorkoutPlaceholder(exerciseType = exerciseType, navController = navController)
+                LiveWorkoutPlaceholder(
+                    exerciseType = exerciseType,
+                    navController = navController,
+                    calibrationGateViewModel = calibrationGateViewModel,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun HomePlaceholder(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(RepMateDestinations.HOME, style = MaterialTheme.typography.titleLarge)
-
-        if (BuildConfig.DEBUG) {
-            Spacer(modifier = Modifier.height(24.dp))
-            // Debug-only bridge to the engine team's sensor bring-up harness. SensorProbeActivity
-            // is a separate Activity that predates this nav graph, not a NavHost destination, so
-            // it's reached with a plain Intent rather than navController.navigate(). Gated on
-            // BuildConfig.DEBUG so it never ships in a release build; delete this block the same
-            // day SensorProbeActivity itself gets deleted.
-            RepMateButton(
-                text = "Open sensor probe (debug)",
-                onClick = { context.startActivity(Intent(context, SensorProbeActivity::class.java)) },
-                variant = RepMateButtonVariant.Ghost,
-            )
         }
     }
 }
@@ -363,13 +363,9 @@ private fun CalibrationPlaceholder(
 private fun LiveWorkoutPlaceholder(
     exerciseType: ExerciseType,
     navController: NavHostController,
+    calibrationGateViewModel: CalibrationGateViewModel,
     modifier: Modifier = Modifier,
 ) {
-    // TODO: replace with a real lookup once calibration profiles are persisted -- no Room/local
-    // storage exists yet, so this always reports "not calibrated". That's intentional for now: it's
-    // what exercises the redirect-to-calibration path below until the real check is wired in.
-    val isCalibrated = false
-
     // rememberSaveable ties this flag to the back stack entry rather than just this composition, so
     // it survives calibration being pushed on top and then popped back off -- without it, popping
     // back here would recompose this screen from scratch and immediately redirect to calibration
@@ -379,7 +375,10 @@ private fun LiveWorkoutPlaceholder(
     LaunchedEffect(Unit) {
         if (!hasCheckedCalibration) {
             hasCheckedCalibration = true
-            if (!isCalibrated) {
+            // Same check Home's exercise chips use -- see CalibrationGateViewModel. Currently
+            // always resolves to "not calibrated" only because its backing repository is stubbed
+            // (no Room table for calibration profiles yet), not because this branch is hardcoded.
+            if (!calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
                 navController.navigate(RepMateDestinations.calibration(exerciseType))
             }
         }
