@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -5,6 +7,14 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
 }
+
+// Secrets that must never be hardcoded (Golden Rule 6): read from local.properties, which is
+// gitignored, with a placeholder fallback so a fresh checkout without that file still builds.
+val localProperties =
+    Properties().apply {
+        val file = rootProject.file("local.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
 
 android {
     namespace = "com.example.repmate"
@@ -20,6 +30,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Google Sign-In's Credential Manager flow needs the Firebase project's OAuth Web
+        // Client ID (Firebase console > Authentication > Sign-in method > Google > Web SDK
+        // configuration). Real teams add GOOGLE_WEB_CLIENT_ID=<value> to their own
+        // local.properties (gitignored); this placeholder just keeps the build green for
+        // anyone who hasn't set that up yet -- Google Sign-In itself won't work until it's real.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "REPLACE_WITH_FIREBASE_WEB_CLIENT_ID")}\"",
+        )
     }
 
     buildTypes {
@@ -35,6 +56,10 @@ android {
     }
     buildFeatures {
         compose = true
+        // Needed for BuildConfig.DEBUG, which gates the debug-only "open sensor probe" button on
+        // the home placeholder (see RepMateDestinations.HOME in NavGraph.kt). AGP 8+ makes
+        // BuildConfig generation opt-in, so this must be explicit.
+        buildConfig = true
     }
 }
 
@@ -73,15 +98,27 @@ dependencies {
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    // Lets a @Composable pull a @HiltViewModel via hiltViewModel() (SignUpScreen's AuthViewModel).
+    // Not androidx.hilt:hilt-navigation-compose: as of Hilt 1.3.0, that artifact's hiltViewModel()
+    // is deprecated in favor of this one, which drops the transitive androidx.navigation
+    // dependency -- nothing here needs nav-graph-scoped ViewModel sharing, so no reason to keep it.
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
 
     // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.firestore)
-    implementation(libs.kotlinx.coroutines.play.services)
+    // Firebase Auth + Firestore
+        implementation(platform(libs.firebase.bom))
+        implementation(libs.firebase.auth)
+        implementation(libs.firebase.firestore)
+
+    // Turns FirebaseAuth's Task<T> results into suspend calls (.await()) instead of listeners.
+        implementation(libs.kotlinx.coroutines.play.services)
+
+    // Google Sign-In via Android's Credential Manager.
+        implementation(libs.androidx.credentials)
+        implementation(libs.androidx.credentials.play.services.auth)
+        implementation(libs.googleid)
 }

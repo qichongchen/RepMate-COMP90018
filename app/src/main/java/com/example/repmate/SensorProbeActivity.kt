@@ -66,10 +66,18 @@ import kotlin.math.sqrt
  * from a rep, its passing band is just 0.15 wide, and both edges of that band come from one
  * participant's recording. A live miscount is most likely to show up there.
  *
- * ### To remove it (do this before merging the real UI)
+ * ### Launching it
+ * This is no longer the app's launcher — `.MainActivity` is, and it opens the real nav graph
+ * starting at `welcome`. This activity has no intent-filter, so it won't show up as a home
+ * screen icon; launch it explicitly instead when you need it:
+ * ```
+ * adb shell am start -n com.example.repmate/.SensorProbeActivity
+ * ```
+ * or add an Android Studio run configuration that targets this Activity specifically.
+ *
+ * ### To remove it for good (once the engine team no longer needs it)
  * 1. Delete this file.
- * 2. In `AndroidManifest.xml`, delete the `.SensorProbeActivity` entry and uncomment the
- *    MAIN/LAUNCHER `intent-filter` on `.MainActivity` — it is marked with the same warning.
+ * 2. In `AndroidManifest.xml`, delete the `.SensorProbeActivity` `<activity>` entry.
  *
  * ### To read its output
  * Logcat tag `RepMateProbe`: one line per 25 frames, plus one `REP #n` line per counted rep.
