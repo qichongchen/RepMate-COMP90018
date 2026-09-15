@@ -74,9 +74,8 @@ fun LogInScreen(
         onEmailChanged = viewModel::onEmailChanged,
         onPasswordChanged = viewModel::onPasswordChanged,
         onLogInClick = viewModel::onLogInClicked,
-        // TODO: Google Sign-In requires Firebase console config (SHA-1/SHA-256 fingerprint +
-        // Google provider enabled) — confirm with Lisa this is set up before testing on a real
-        // device/signed build.
+        // Firebase config confirmed working (Auth providers, Google Sign-In fingerprint, Hilt
+        // binding) - tested by Lisa, 15 Sep.
         onGoogleClick = {
             coroutineScope.launch {
                 viewModel.onGoogleSignInStarted()

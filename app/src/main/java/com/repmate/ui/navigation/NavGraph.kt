@@ -164,11 +164,10 @@ fun RepMateNavGraph(
                 WelcomeScreen(
                     onSignUp = { navController.navigate(RepMateDestinations.SIGNUP) },
                     onLogIn = { navController.navigate(RepMateDestinations.LOGIN) },
-                    onContinueAsGuest = {
-                        // TODO: wire to FirebaseAuth anonymous sign-in once data.repo exists.
-                        // For now, just proceed to onboarding so the flow is testable end to end.
-                        // welcome is popped off the back stack, same as the auth screens will be
-                        // once they're real, so the user can't land back on it via the back button.
+                    onGuestSignInSuccess = {
+                        // Same convention as sign-up/log-in success: welcome (and the whole
+                        // pre-auth stack) is popped off, so the user can't land back on it via
+                        // the back button once actually signed in -- anonymously or otherwise.
                         navController.navigate(RepMateDestinations.ONBOARDING) {
                             popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
                         }

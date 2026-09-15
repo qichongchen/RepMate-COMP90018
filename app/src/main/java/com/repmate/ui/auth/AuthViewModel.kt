@@ -159,9 +159,8 @@ class AuthViewModel
          * came from -- `signInWithCredential` transparently creates the account if this Google
          * identity is new, or logs in if it isn't, so sign-up and log-in need no separate paths.
          */
-        // TODO: Google Sign-In requires Firebase console config (SHA-1/SHA-256 fingerprint +
-        // Google provider enabled) — confirm with Lisa this is set up before testing on a real
-        // device/signed build.
+        // Firebase config confirmed working (Auth providers, Google Sign-In fingerprint, Hilt
+        // binding) - tested by Lisa, 15 Sep.
         fun onGoogleIdTokenReceived(idToken: String) {
             viewModelScope.launch {
                 try {
