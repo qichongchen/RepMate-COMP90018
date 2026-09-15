@@ -109,15 +109,16 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // Firebase Auth: email/password and Google sign-up on SignUpScreen.
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth)
-    // Turns FirebaseAuth's Task<T> results into suspend calls (.await()) instead of listeners.
-    implementation(libs.kotlinx.coroutines.play.services)
+    // Firebase Auth + Firestore
+        implementation(platform(libs.firebase.bom))
+        implementation(libs.firebase.auth)
+        implementation(libs.firebase.firestore)
 
-    // Google Sign-In via Android's Credential Manager (the current recommended API, superseding
-    // the older GoogleSignInClient), plus the Google ID helper that reads the token it returns.
-    implementation(libs.androidx.credentials)
-    implementation(libs.androidx.credentials.play.services.auth)
-    implementation(libs.googleid)
+    // Turns FirebaseAuth's Task<T> results into suspend calls (.await()) instead of listeners.
+        implementation(libs.kotlinx.coroutines.play.services)
+
+    // Google Sign-In via Android's Credential Manager.
+        implementation(libs.androidx.credentials)
+        implementation(libs.androidx.credentials.play.services.auth)
+        implementation(libs.googleid)
 }

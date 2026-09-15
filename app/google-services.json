@@ -1,23 +1,45 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "repmate-placeholder",
-    "storage_bucket": "repmate-placeholder.appspot.com"
+    "project_number": "115300933469",
+    "project_id": "repmate-556ae",
+    "storage_bucket": "repmate-556ae.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:115300933469:android:15f3227e1dd5bd84bdd2b4",
         "android_client_info": {
           "package_name": "com.example.repmate"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "115300933469-psra3gm6h4n08ter6gcv0t7rqtaj0sp9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.repmate",
+            "certificate_hash": "e1602cb643c879de337344768ee9e1954745b8c0"
+          }
+        },
+        {
+          "client_id": "115300933469-jq3foe5fal33vfth72comefqqfs9lun2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
-        { "current_key": "PLACEHOLDER_API_KEY" }
+        {
+          "current_key": "AIzaSyCEBjAwQIm1T9OdhdTa97Sf81WEqGjrGpE"
+        }
       ],
       "services": {
-        "appinvite_service": { "other_platform_oauth_client": [] }
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "115300933469-jq3foe5fal33vfth72comefqqfs9lun2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
       }
     }
   ],
