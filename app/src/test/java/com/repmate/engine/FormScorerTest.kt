@@ -103,21 +103,55 @@ class FormScorerTest {
     }
 
     @Test
-    fun `works without a calibration profile using the fallback reference`() {
-        val rep = RepEvent(index = 0, startMs = 0L, endMs = 1000L, amplitude = 1.5f)
-
-        val result = scorer.score(rep, profile = null)
-
-        // Should not throw, and should still produce a score in range.
-        assertTrue(result.score in 0f..10f)
-    }
-
-    @Test
     fun `pauseSeconds is always zero for now`() {
         val rep = RepEvent(index = 0, startMs = 0L, endMs = 1000L, amplitude = 2.1f)
 
         val result = scorer.score(rep, profile)
 
         assertEquals(0f, result.pauseSeconds)
+    }
+
+    // --- 2026-09-15: uncalibrated users no longer get a depth or consistency score --------
+    // See FormScorer's class KDoc for the full rationale (Mohit's 43-rep, 4-participant real
+    // data check found ~9x amplitude variation between users -- no single placeholder is
+    // fair). These replace the old "works without a calibration profile using the fallback
+    // reference" test, which asserted only `result.score in 0f..10f` under the now-removed
+    // FALLBACK_REFERENCE_AMPLITUDE behaviour.
+
+    @Test
+    fun `uncalibrated user gets no depth score, only a sentinel range and an explanatory reason`() {
+        val rep = RepEvent(index = 0, startMs = 0L, endMs = 1000L, amplitude = 1.5f)
+
+        val result = scorer.score(rep, profile = null)
+
+        assertEquals(FormScorer.NOT_MEASURABLE_RANGE_PERCENT, result.rangePercent)
+        assertTrue(result.reasons.contains(FormScorer.UNCALIBRATED_DEPTH_REASON))
+        assertTrue(!result.reasons.contains("good depth"))
+        assertTrue(!result.reasons.contains("not deep enough"))
+    }
+
+    @Test
+    fun `uncalibrated user skips consistency check even with plenty of history`() {
+        val previous = listOf(
+            RepEvent(index = 0, startMs = 0L, endMs = 1000L, amplitude = 2.0f),
+            RepEvent(index = 1, startMs = 2000L, endMs = 3000L, amplitude = 2.1f),
+            RepEvent(index = 2, startMs = 4000L, endMs = 5000L, amplitude = 1.9f)
+        )
+        val current = RepEvent(index = 3, startMs = 6000L, endMs = 7000L, amplitude = 8.0f) // wildly different
+
+        val result = scorer.score(current, profile = null, previousReps = previous)
+
+        assertTrue(!result.reasons.contains("inconsistent with your calibrated depth"))
+    }
+
+    @Test
+    fun `uncalibrated tempo fallback window is tightened to 1800ms`() {
+        // 1900ms is slower than the new 1800ms fallback ceiling but would NOT have tripped
+        // the old 2000ms ceiling -- a direct regression check for the tightened window.
+        val rep = RepEvent(index = 0, startMs = 0L, endMs = 1900L, amplitude = 1.5f)
+
+        val result = scorer.score(rep, profile = null)
+
+        assertTrue(result.reasons.contains("slower than usual"))
     }
 }
