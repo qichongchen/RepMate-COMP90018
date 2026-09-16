@@ -28,4 +28,6 @@ class StubCalibrationRepository
         ) {
             profiles[exerciseType] = profile
         }
+
+        override suspend fun getProfile(exerciseType: ExerciseType): CalibrationProfile? = profiles[exerciseType]
     }

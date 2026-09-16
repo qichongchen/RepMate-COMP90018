@@ -1,4 +1,4 @@
-package com.repmate.ui.calibration
+package com.repmate.ui.audio
 
 import android.content.Context
 import android.media.AudioAttributes
@@ -18,12 +18,14 @@ import java.nio.ByteOrder
 import kotlin.math.sin
 
 /**
- * Plays an audible beat at [JumpingJackRepDetector.TARGET_BPM] for the duration jumping-jack
- * calibration is recording -- the audio half of the paced cadence [JumpingJackRepDetector]'s
- * whole counting model assumes (see "This detector assumes a paced cadence" in that class's
- * KDoc). [JumpingJackRecordingContent]'s visual pulse ring reads the exact same
- * [JumpingJackRepDetector.TARGET_BPM] constant, so the two stay in sync by construction rather
- * than by two hand-tuned copies of the same number drifting apart.
+ * Plays an audible beat at [JumpingJackRepDetector.TARGET_BPM] for as long as it's running --
+ * the audio half of the paced cadence [JumpingJackRepDetector]'s whole counting model assumes
+ * (see "This detector assumes a paced cadence" in that class's KDoc). Shared between
+ * `CalibrationScreen`'s jumping-jack recording state and `LiveWorkoutScreen`'s jumping-jack
+ * workouts -- both read the exact same [JumpingJackRepDetector.TARGET_BPM] constant for their
+ * visual pulse too, so audio and visual stay in sync everywhere by construction rather than by
+ * hand-tuned copies of the same number drifting apart. Lives in `ui.audio` rather than either
+ * screen's own package precisely because both need it.
  *
  * There is no bundled beep sample in the project yet, so the click played on each beat is
  * generated once per instance (a short sine tone written out as a small WAV file in the app's
@@ -31,9 +33,9 @@ import kotlin.math.sin
  * file/resource, not a raw in-memory buffer, which is why this goes via a cache file instead of
  * handing it samples directly.
  *
- * One instance per calibration attempt: [start] creates the [SoundPool] and begins the beat
- * loop, [release] tears both down. Not reusable after [release] -- construct a new instance for
- * the next attempt (this is what [JumpingJackRecordingContent]'s `DisposableEffect` does).
+ * One instance per screen visit: [start] creates the [SoundPool] and begins the beat loop,
+ * [release] tears both down. Not reusable after [release] -- construct a new instance for the
+ * next visit (this is what each caller's `DisposableEffect` does).
  */
 class JumpingJackMetronome(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -87,13 +89,12 @@ class JumpingJackMetronome(private val context: Context) {
         private const val SAMPLE_RATE_HZ = 44_100
         private const val BEEP_DURATION_MS = 80
         private const val BEEP_FREQUENCY_HZ = 880.0
-        private const val BEEP_FILE_NAME = "calibration_beep.wav"
+        private const val BEEP_FILE_NAME = "jumping_jack_beep.wav"
 
         /**
          * Generates a short sine-wave click and writes it out as a WAV file in the app's cache
-         * dir. Regenerated on every [start] rather than cached across calibration attempts: the
-         * file is a few KB and writing it takes a handful of milliseconds, not worth the added
-         * state to skip.
+         * dir. Regenerated on every [start] rather than cached across visits: the file is a few
+         * KB and writing it takes a handful of milliseconds, not worth the added state to skip.
          */
         private fun generateBeepFile(context: Context): File {
             val sampleCount = SAMPLE_RATE_HZ * BEEP_DURATION_MS / 1000
