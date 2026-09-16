@@ -24,4 +24,11 @@ interface CalibrationRepository {
         exerciseType: ExerciseType,
         profile: CalibrationProfile,
     )
+
+    /**
+     * The saved profile for [exerciseType], or `null` if uncalibrated. `null` is not an error
+     * case here -- every real detector and [com.repmate.engine.FormScorer] already fall back to
+     * tuned defaults / calibration-optional scoring for it, per those classes' own docs.
+     */
+    suspend fun getProfile(exerciseType: ExerciseType): CalibrationProfile?
 }

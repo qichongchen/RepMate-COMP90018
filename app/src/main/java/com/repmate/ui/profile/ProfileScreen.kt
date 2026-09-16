@@ -22,6 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -277,6 +279,16 @@ private fun SettingsDivider(modifier: Modifier = Modifier) {
  * [onCheckedChange] is: a placeholder for this first pass -- see the TODO on the matching
  * [ProfileUiState] field. "Dark theme" passes a real [onCheckedChange] and is the one row here
  * that's actually wired up.
+ *
+ * Explicit checked-state colors, set once here so every toggle on this screen matches: Material
+ * 3's own [SwitchDefaults.colors] default checkedThumbColor is `colorScheme.onPrimary`, which in
+ * this theme is a near-black text-on-lime-accent color, not something meant to double as a knob
+ * -- against the lime checked track it reads as a plain black dot. A literal white thumb against
+ * [MaterialTheme.colorScheme.primary]'s lime track reads as an actual toggle knob instead.
+ * `primary` is the same lime value in both light and dark ([com.repmate.ui.theme.LimeAccent]), so this
+ * checked-state pairing needs no light/dark branching to look right in both. Unchecked
+ * thumb/track are left at [SwitchDefaults]' own values, which is exactly the already-correct
+ * neutral-gray off-state look every toggle on this screen already has.
  */
 @Composable
 private fun SettingsToggleRow(
@@ -295,7 +307,15 @@ private fun SettingsToggleRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors =
+                SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                ),
+        )
     }
 }
 

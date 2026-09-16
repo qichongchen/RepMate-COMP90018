@@ -47,6 +47,7 @@ import com.repmate.engine.CalibrationOutcome
 import com.repmate.engine.CalibrationProfile
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.JumpingJackRepDetector
+import com.repmate.ui.audio.JumpingJackMetronome
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.theme.RepMateTheme
 
