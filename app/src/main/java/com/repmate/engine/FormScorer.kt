@@ -1,6 +1,5 @@
 package com.repmate.engine
 
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -48,6 +47,11 @@ import kotlin.math.roundToInt
  *   internal spread) score as "consistent" even though every rep was equally far from a
  *   good depth. (Caught in PR #3 review by Mohit, 2026-09-14 -- see the regression test in
  *   FormScorerTest.)
+ *   **2026-09-16 refinement**: the deviation measured is now one-sided (only shortfall below
+ *   the reference counts) -- a rep deeper than calibration is not a consistency problem, and
+ *   the old symmetric formula produced false positives on genuinely correct sets whose
+ *   amplitude climbs while "settling into" the movement (see Mohit's squat_10_pocket finding
+ *   in the team chat, 2026-09-15). See the new regression test in FormScorerTest.
  * - **Pause is NOT implemented.** [RepEvent] only carries `startMs`/`endMs`/`amplitude` for
  *   the whole movement burst. [SquatRepDetector] cannot separate descent from ascent (its
  *   own KDoc explains why -- magnitude is direction-blind), so there is no timestamp
@@ -139,7 +143,7 @@ class FormScorer {
             val referenceAmplitude = profile.softestSampleAmplitude
             val amplitudes = previousReps.map { it.amplitude } + rep.amplitude
             val meanRelativeDeviation = amplitudes
-                .map { abs(it - referenceAmplitude) / referenceAmplitude }
+                .map { maxOf(0f, referenceAmplitude - it) / referenceAmplitude }
                 .average()
                 .toFloat()
 
@@ -184,11 +188,13 @@ class FormScorer {
 
         private const val MIN_HISTORY_FOR_CONSISTENCY = 2
 
-        // Average relative deviation (|amplitude - referenceAmplitude| / referenceAmplitude)
-        // across the session's reps, above which the set is flagged as inconsistent.
-        // Anchored to the calibration reference rather than the session's own mean -- see
-        // class KDoc. Same numeric value carried over from the first pass; still an
-        // unvalidated guess, not checked against real data.
+        // Average relative *shortfall* (max(0, referenceAmplitude - amplitude) / referenceAmplitude)
+        // across the session's reps, above which the set is flagged as inconsistent. One-sided by
+        // design (2026-09-16, Mohit's squat_10_pocket finding): a rep deeper/more forceful than the
+        // calibration reference is never penalized here, mirroring how depth scoring above already
+        // treats depthRatio >= 1 as unconditionally "good depth". Only shortfalls below the
+        // reference count toward the average. Same numeric threshold carried over from the first
+        // pass; verified against real squat_10_pocket data (2026-09-16) to no longer false-positive.
         private const val CONSISTENCY_DEVIATION_THRESHOLD = 0.35f
 
         // Used only when the user has no CalibrationProfile yet, for tempo only -- depth no
