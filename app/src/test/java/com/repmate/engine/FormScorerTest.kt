@@ -61,16 +61,40 @@ class FormScorerTest {
     }
 
     @Test
-    fun `inconsistent amplitude against session history is flagged`() {
+    fun `rep much deeper than the calibration reference is not flagged as inconsistent`() {
+        // Was "inconsistent amplitude against session history is flagged" before the
+        // 2026-09-16 one-sided fix (see Mohit's squat_10_pocket finding, team chat). A rep
+        // deeper than calibration is not a quality problem, so this scenario should now NOT
+        // be flagged -- being more forceful than your softest calibration rep is fine.
         val previous = listOf(
             RepEvent(index = 0, startMs = 0L, endMs = 1100L, amplitude = 2.0f),
             RepEvent(index = 1, startMs = 2000L, endMs = 3100L, amplitude = 2.1f)
         )
-        val current = RepEvent(index = 2, startMs = 4000L, endMs = 5100L, amplitude = 4.5f) // way bigger than the other two
+        val current = RepEvent(index = 2, startMs = 4000L, endMs = 5100L, amplitude = 4.5f) // way bigger than the other two, but deeper is fine
 
         val result = scorer.score(current, profile, previousReps = previous)
 
-        assertTrue(result.reasons.contains("inconsistent with your calibrated depth"))
+        assertTrue(!result.reasons.contains("inconsistent with your calibrated depth"))
+    }
+
+    @Test
+    fun `climbing amplitudes above the calibration reference are not flagged inconsistent`() {
+        // Regression test for Mohit's squat_10_pocket finding (team chat, 2026-09-15 evening):
+        // 10 genuinely correct squats with amplitude climbing 1.28 -> 2.02 as the lifter
+        // "settles into" the movement. Every rep is at or above the calibration reference
+        // (1.17), so none of them should count as inconsistent under the one-sided formula --
+        // the old symmetric formula flagged 5 of these 10 reps as the average grew away from
+        // 1.17.
+        val closeProfile = profile.copy(softestSampleAmplitude = 1.17f)
+        val amplitudes = listOf(1.28f, 1.45f, 1.62f, 1.78f, 1.90f, 1.95f, 1.98f, 2.00f, 2.01f)
+        val previous = amplitudes.mapIndexed { i, amp ->
+            RepEvent(index = i, startMs = i * 2000L, endMs = i * 2000L + 1000L, amplitude = amp)
+        }
+        val current = RepEvent(index = 9, startMs = 18000L, endMs = 19000L, amplitude = 2.02f)
+
+        val result = scorer.score(current, closeProfile, previousReps = previous)
+
+        assertTrue(!result.reasons.contains("inconsistent with your calibrated depth"))
     }
 
     @Test
@@ -90,7 +114,8 @@ class FormScorerTest {
         // softestSampleAmplitude (2.0f) -- i.e. a uniformly bad set. The old formula compared
         // reps only to their own session mean/spread and would have missed this entirely
         // (near-zero internal spread); scoring against the calibration reference instead
-        // catches it.
+        // catches it. Still holds under the 2026-09-16 one-sided formula, since every rep
+        // here is shallower than the reference, not deeper.
         val previous = listOf(
             RepEvent(index = 0, startMs = 0L, endMs = 1100L, amplitude = 1.0f),
             RepEvent(index = 1, startMs = 2000L, endMs = 3100L, amplitude = 1.05f)
