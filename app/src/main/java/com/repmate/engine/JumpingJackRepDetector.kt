@@ -287,5 +287,15 @@ class JumpingJackRepDetector(
 
         /** Bursts per rep in both paced reference recordings. */
         const val PACED_BURSTS_PER_REP = 2
+
+        /**
+         * The cadence this detector's whole model assumes -- one full jack (out and back) per
+         * beat, per "This detector assumes a paced cadence" above. Not read by [process]/[pair]
+         * (this class does not police cadence itself, it only counts what a paced set produces);
+         * it exists as the single source of truth for whatever cues that pace to the user --
+         * `CalibrationScreen`'s jumping-jack beat today, Live Workout's eventually -- so neither
+         * has to hardcode its own copy of this figure.
+         */
+        const val TARGET_BPM = 52
     }
 }

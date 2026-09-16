@@ -45,17 +45,22 @@ import com.repmate.ui.theme.RepMateTheme
  * Split into this stateful wrapper and the stateless [ProfileContent] below, same reasoning as
  * every other screen in this app: previews render from a plain [ProfileUiState], no Hilt required.
  *
- * For this first pass, only the header (account name/avatar/caption), "Sign out", and the "Dark
- * theme" toggle are real -- the stats numbers, the other two toggles, and the "Emergency
- * contact"/"Units"/"Recalibrate"/"Friends" rows are static placeholders. See the TODOs on
+ * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Dark
+ * theme" toggle, and "Recalibrate" are real -- the stats numbers, the other two toggles, and the
+ * "Emergency contact"/"Units"/"Friends" rows are static placeholders. See the TODOs on
  * [ProfileUiState] for what each should eventually read from.
  *
  * @param onSignedOut invoked once sign-out completes, so the caller (`NavGraph.kt`) can navigate
  *   back to Welcome with a cleared back stack -- this screen doesn't know about routes at all.
+ * @param onRecalibrateClick invoked when the "Recalibrate" row is tapped. Takes no exercise type:
+ *   this screen has no notion of "the current exercise" the way Home's chips do, so the caller
+ *   (`NavGraph.kt`) is the one that shows an exercise picker and decides where to navigate once
+ *   one is chosen.
  */
 @Composable
 fun ProfileScreen(
     onSignedOut: () -> Unit,
+    onRecalibrateClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -69,6 +74,7 @@ fun ProfileScreen(
         uiState = uiState,
         onSignOutClicked = viewModel::onSignOutClicked,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
+        onRecalibrateClick = onRecalibrateClick,
         modifier = modifier,
     )
 }
@@ -78,6 +84,7 @@ private fun ProfileContent(
     uiState: ProfileUiState,
     onSignOutClicked: () -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
+    onRecalibrateClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -121,7 +128,7 @@ private fun ProfileContent(
             SettingsDivider()
             SettingsNavigationRow(label = "Units")
             SettingsDivider()
-            SettingsNavigationRow(label = "Recalibrate")
+            SettingsNavigationRow(label = "Recalibrate", onClick = onRecalibrateClick)
         }
 
         SettingsSection(label = "account") {
@@ -351,7 +358,12 @@ private val PREVIEW_STATE =
 @Composable
 private fun ProfileScreenLightPreview() {
     RepMateTheme(darkTheme = false) {
-        ProfileContent(uiState = PREVIEW_STATE, onSignOutClicked = {}, onDarkThemeToggled = {})
+        ProfileContent(
+            uiState = PREVIEW_STATE,
+            onSignOutClicked = {},
+            onDarkThemeToggled = {},
+            onRecalibrateClick = {},
+        )
     }
 }
 
@@ -359,6 +371,11 @@ private fun ProfileScreenLightPreview() {
 @Composable
 private fun ProfileScreenDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        ProfileContent(uiState = PREVIEW_STATE, onSignOutClicked = {}, onDarkThemeToggled = {})
+        ProfileContent(
+            uiState = PREVIEW_STATE,
+            onSignOutClicked = {},
+            onDarkThemeToggled = {},
+            onRecalibrateClick = {},
+        )
     }
 }

@@ -1,23 +1,16 @@
 package com.repmate.ui.navigation
 
 import android.net.Uri
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -35,17 +28,30 @@ import com.repmate.ui.auth.ForgotPasswordScreen
 import com.repmate.ui.auth.LogInScreen
 import com.repmate.ui.auth.SignUpScreen
 import com.repmate.ui.auth.WelcomeScreen
+import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
-import com.repmate.ui.components.RepMateButton
-import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.home.CalibrationGateViewModel
 import com.repmate.ui.home.HomeScreen
 import com.repmate.ui.onboarding.OnboardingGateViewModel
 import com.repmate.ui.onboarding.OnboardingScreen
 import com.repmate.ui.profile.ProfileScreen
+import com.repmate.ui.profile.RecalibrateExercisePicker
 import com.repmate.ui.theme.RepMateTheme
 import kotlinx.coroutines.launch
+
+/**
+ * Why Calibration was entered, carried as a route argument so its own "what happens when this
+ * finishes" decision (see the `CALIBRATION` composable in [RepMateNavGraph]) doesn't have to guess
+ * from the back stack.
+ */
+enum class CalibrationEntryPoint {
+    /** Reached via Home's exercise chips, or Live Workout's own pre-check -- finishing should proceed into the workout. */
+    EXERCISE_START,
+
+    /** Reached via Profile's "Recalibrate" row -- finishing should return to Profile, not start a workout nobody asked for. */
+    RECALIBRATE,
+}
 
 /**
  * Every route RepMate navigates between, plus the small helpers for building/parsing the ones
@@ -64,11 +70,17 @@ object RepMateDestinations {
     const val PROFILE = "profile"
 
     const val ARG_EXERCISE_TYPE = "exerciseType"
+    const val ARG_CALIBRATION_ENTRY_POINT = "entryPoint"
     const val ARG_SESSION_ID = "sessionId"
     const val ARG_EMAIL = "email"
 
-    /** Route patterns for [NavHost]'s `composable(route = ...)` registration. */
-    const val CALIBRATION = "calibration/{$ARG_EXERCISE_TYPE}"
+    /**
+     * Route patterns for [NavHost]'s `composable(route = ...)` registration. `CALIBRATION` carries
+     * [ARG_CALIBRATION_ENTRY_POINT] as a required second path segment, not an optional query param
+     * like `FORGOT_PASSWORD`'s email: every caller always has one to pass (see [calibration]),
+     * unlike email, which that screen can genuinely be reached without.
+     */
+    const val CALIBRATION = "calibration/{$ARG_EXERCISE_TYPE}/{$ARG_CALIBRATION_ENTRY_POINT}"
     const val LIVE_WORKOUT = "live_workout/{$ARG_EXERCISE_TYPE}"
     const val MOTION_REPLAY = "motion_replay/{$ARG_SESSION_ID}"
 
@@ -80,7 +92,10 @@ object RepMateDestinations {
     const val FORGOT_PASSWORD = "forgot_password?$ARG_EMAIL={$ARG_EMAIL}"
 
     /** Concrete routes for [NavHostController.navigate] call sites. */
-    fun calibration(exerciseType: ExerciseType) = "calibration/${exerciseType.name}"
+    fun calibration(
+        exerciseType: ExerciseType,
+        entryPoint: CalibrationEntryPoint,
+    ) = "calibration/${exerciseType.name}/${entryPoint.name}"
 
     fun liveWorkout(exerciseType: ExerciseType) = "live_workout/${exerciseType.name}"
 
@@ -105,6 +120,16 @@ object RepMateDestinations {
  * app, just fall back to something sensible.
  */
 private fun parseExerciseType(raw: String?): ExerciseType = ExerciseType.entries.firstOrNull { it.name == raw } ?: ExerciseType.SQUAT
+
+/**
+ * Turns the raw `{entryPoint}` path argument back into a [CalibrationEntryPoint].
+ *
+ * Falls back to [CalibrationEntryPoint.EXERCISE_START] for a missing or unrecognised value, same
+ * reasoning as [parseExerciseType] -- and it's also the entry point every caller used before this
+ * argument existed, so a malformed value degrades to the original behavior rather than a new one.
+ */
+private fun parseCalibrationEntryPoint(raw: String?): CalibrationEntryPoint =
+    CalibrationEntryPoint.entries.firstOrNull { it.name == raw } ?: CalibrationEntryPoint.EXERCISE_START
 
 /** Maps a bottom-nav route back to the [BottomNavItem] it represents, for highlighting the active tab. */
 private fun String?.toBottomNavItemOrNull(): BottomNavItem? =
@@ -278,7 +303,7 @@ fun RepMateNavGraph(
                                 if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
                                     RepMateDestinations.liveWorkout(exerciseType)
                                 } else {
-                                    RepMateDestinations.calibration(exerciseType)
+                                    RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
                                 }
                             navController.navigate(destination)
                         }
@@ -289,6 +314,11 @@ fun RepMateNavGraph(
             composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
             composable(RepMateDestinations.LEADERBOARD) { PlaceholderScreen(RepMateDestinations.LEADERBOARD) }
             composable(RepMateDestinations.PROFILE) {
+                // Local to this destination, not hoisted to RepMateNavGraph level like
+                // onboardingGateViewModel/calibrationGateViewModel above -- nothing outside this one
+                // screen's visit needs to know whether the picker is open.
+                var showRecalibratePicker by remember { mutableStateOf(false) }
+
                 ProfileScreen(
                     onSignedOut = {
                         // Numeric popUpTo(0), not popUpTo(RepMateDestinations.WELCOME): by the time a
@@ -301,7 +331,18 @@ fun RepMateNavGraph(
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                    onRecalibrateClick = { showRecalibratePicker = true },
                 )
+
+                if (showRecalibratePicker) {
+                    RecalibrateExercisePicker(
+                        onExerciseSelected = { exerciseType ->
+                            showRecalibratePicker = false
+                            navController.navigate(RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.RECALIBRATE))
+                        },
+                        onDismissRequest = { showRecalibratePicker = false },
+                    )
+                }
             }
 
             composable(
@@ -314,23 +355,38 @@ fun RepMateNavGraph(
 
             composable(
                 route = RepMateDestinations.CALIBRATION,
-                arguments = listOf(navArgument(RepMateDestinations.ARG_EXERCISE_TYPE) { type = NavType.StringType }),
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_EXERCISE_TYPE) { type = NavType.StringType },
+                        navArgument(RepMateDestinations.ARG_CALIBRATION_ENTRY_POINT) { type = NavType.StringType },
+                    ),
             ) { backStackEntry ->
                 val exerciseType = parseExerciseType(backStackEntry.arguments?.getString(RepMateDestinations.ARG_EXERCISE_TYPE))
-                // TODO(engine): jumping-jack calibration needs an audible metronome at ~52 BPM (one
-                // beep per full jack) running for the whole calibration set -- a hard requirement from
-                // Mohit on the engine side, not optional. Not implemented yet; wire it in when this
-                // becomes a real screen, gated on exerciseType == ExerciseType.JUMPING_JACK. Squats
-                // and push-ups don't need it.
-                CalibrationPlaceholder(
+                val entryPoint =
+                    parseCalibrationEntryPoint(backStackEntry.arguments?.getString(RepMateDestinations.ARG_CALIBRATION_ENTRY_POINT))
+                CalibrationScreen(
                     exerciseType = exerciseType,
-                    onDone = {
-                        // Calibration is always pushed on top of whatever triggered it (currently only
-                        // live_workout), so popping the back stack is "go to wherever this came from"
-                        // -- home or the workout in progress -- with no return route to pass around.
-                        // Skip and a completed calibration both land here for now since neither a real
-                        // calibration UI nor profile storage exists yet.
-                        navController.popBackStack()
+                    onCalibrationComplete = {
+                        when (entryPoint) {
+                            CalibrationEntryPoint.EXERCISE_START ->
+                                // launchSingleTop matters when this calibration run was triggered by
+                                // LiveWorkoutPlaceholder's own pre-check rather than a Home chip tap:
+                                // that live_workout entry is still on the back stack right below the
+                                // Calibration entry popUpTo removes here, and without launchSingleTop
+                                // this would push a second copy of it on top instead of resuming that
+                                // same one.
+                                navController.navigate(RepMateDestinations.liveWorkout(exerciseType)) {
+                                    popUpTo(RepMateDestinations.calibration(exerciseType, entryPoint)) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            CalibrationEntryPoint.RECALIBRATE ->
+                                // Profile is still directly below Calibration on the back stack in this
+                                // flow -- Recalibrate is only ever launched straight from Profile, never
+                                // via a redirect chain like live_workout's pre-check above -- so popping
+                                // back to it is simpler and correct, with no forward destination to
+                                // navigate into and no duplicate-entry risk to guard against.
+                                navController.popBackStack()
+                        }
                     },
                 )
             }
@@ -355,26 +411,6 @@ fun RepMateNavGraph(
 }
 
 @Composable
-private fun CalibrationPlaceholder(
-    exerciseType: ExerciseType,
-    onDone: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(RepMateDestinations.calibration(exerciseType), style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(24.dp))
-        // Calibration is optional -- skipping it just falls back to the detector's default
-        // thresholds, per the engine team's spec, so skip and a (not yet built) completed
-        // calibration both just leave this screen for now.
-        RepMateButton(text = "Skip calibration", onClick = onDone, variant = RepMateButtonVariant.Ghost)
-    }
-}
-
-@Composable
 private fun LiveWorkoutPlaceholder(
     exerciseType: ExerciseType,
     navController: NavHostController,
@@ -394,7 +430,7 @@ private fun LiveWorkoutPlaceholder(
             // always resolves to "not calibrated" only because its backing repository is stubbed
             // (no Room table for calibration profiles yet), not because this branch is hardcoded.
             if (!calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
-                navController.navigate(RepMateDestinations.calibration(exerciseType))
+                navController.navigate(RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START))
             }
         }
     }
