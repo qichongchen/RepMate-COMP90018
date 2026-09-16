@@ -10,17 +10,14 @@ import com.repmate.data.local.CalibrationProfileEntity
 
 @Database(
     entities = [
-        TestEntity::class,
         WorkoutSessionEntity::class,
         RepScoreEntity::class,
         CalibrationProfileEntity::class
     ],
     version = 3,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class RepMateDatabase : RoomDatabase() {
-
-    abstract fun testDao(): TestDao
 
     abstract fun sessionDao(): SessionDao
 

@@ -3,7 +3,6 @@ package com.example.repmate.di
 import android.content.Context
 import androidx.room.Room
 import com.example.repmate.data.RepMateDatabase
-import com.example.repmate.data.TestDao
 import com.repmate.data.local.SessionDao
 import com.repmate.data.local.CalibrationProfileDao
 import dagger.Module
@@ -12,6 +11,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import com.example.repmate.data.MIGRATION_2_3
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -27,16 +27,10 @@ object DatabaseModule {
             RepMateDatabase::class.java,
             "repmate_database"
         )
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            .addMigrations(MIGRATION_2_3)
             .build()
     }
 
-    @Provides
-    fun provideTestDao(
-        database: RepMateDatabase
-    ): TestDao {
-        return database.testDao()
-    }
 
     @Provides
     fun provideSessionDao(
