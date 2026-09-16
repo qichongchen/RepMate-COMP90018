@@ -5,6 +5,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
 import com.repmate.engine.WorkoutSession
+import com.repmate.ui.auth.accountDisplayFor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +20,7 @@ import javax.inject.Inject
  */
 data class HomeUiState(
     val todayLabel: String = "",
-    /** Null means "show the generic person-silhouette fallback", not "loading" -- see [computeAvatarInitial]. */
+    /** Null means "show the generic person-silhouette fallback", not "loading" -- see [com.repmate.ui.auth.accountDisplayFor]. */
     val avatarInitial: String? = null,
     val lastSession: LastSessionUi? = null,
     val leaderboardTop3: List<LeaderboardEntryUi> = emptyList(),
@@ -94,7 +95,7 @@ private fun buildInitialUiState(firebaseAuth: FirebaseAuth): HomeUiState {
 
     return HomeUiState(
         todayLabel = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
-        avatarInitial = computeAvatarInitial(firebaseAuth),
+        avatarInitial = accountDisplayFor(firebaseAuth).avatarInitial,
         lastSession = fakeSession.toLastSessionUi(),
         leaderboardTop3 =
             listOf(
@@ -104,25 +105,6 @@ private fun buildInitialUiState(firebaseAuth: FirebaseAuth): HomeUiState {
             ),
         ghostDuelOpponentName = "Priya",
     )
-}
-
-/**
- * Google sign-ups have a `displayName`; email/password sign-ups don't (that flow deliberately
- * doesn't collect a name -- see `SignUpScreen`'s NOTE on that), so this falls back to the first
- * letter of the email instead. Guests have neither, so this falls back to null -- the generic
- * person-silhouette icon, not a made-up letter for an account with no name or email at all.
- */
-private fun computeAvatarInitial(firebaseAuth: FirebaseAuth): String? {
-    val user = firebaseAuth.currentUser
-    val displayName = user?.displayName
-    if (!displayName.isNullOrBlank()) {
-        return displayName.first().uppercase()
-    }
-    val email = user?.email
-    if (!email.isNullOrBlank()) {
-        return email.first().uppercase()
-    }
-    return null
 }
 
 private fun WorkoutSession.toLastSessionUi(): LastSessionUi =
