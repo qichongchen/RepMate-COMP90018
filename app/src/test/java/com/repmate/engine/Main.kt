@@ -43,9 +43,12 @@ private fun report(trace: LabelledTrace) {
     println()
 
     // The honest number: reps found in the window where the set actually happened.
-    val inSet = SquatRepDetector().processAll(trace.setWindow())
+    val inSet = trace.detect(trace.setWindow())
+
+    val passed = expectation.acceptsRepCount(inSet.size)
+    val status = if (passed) "PASS" else "FAIL"
     println(
-        "  set window %d-%d ms: detected %d, ground truth %s"
+        "  [$status] set window %d-%d ms: detected %d, ground truth %s"
             .format(
                 expectation.setStartMs,
                 expectation.setEndMs,
@@ -55,7 +58,7 @@ private fun report(trace: LabelledTrace) {
     )
 
     // The whole file, including any phone handling at either end.
-    val whole = SquatRepDetector().processAll(trace.frames)
+    val whole = trace.detect(trace.frames)
     val expectedWhole = expectation.fullTraceEvents?.toString() ?: "not recorded"
     println("  whole recording:      detected ${whole.size}, expected $expectedWhole")
     println()

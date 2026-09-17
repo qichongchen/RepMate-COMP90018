@@ -1,6 +1,8 @@
 package com.repmate.di
 
 import com.repmate.data.local.RoomSessionRepository
+import com.repmate.data.local.StubCalibrationRepository
+import com.repmate.data.repo.CalibrationRepository
 import com.repmate.data.repo.SessionRepository
 import dagger.Binds
 import dagger.Module
@@ -17,4 +19,10 @@ abstract class RepositoryModule {
     abstract fun bindSessionRepository(
         implementation: RoomSessionRepository
     ): SessionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCalibrationRepository(
+        implementation: StubCalibrationRepository
+    ): CalibrationRepository
 }
