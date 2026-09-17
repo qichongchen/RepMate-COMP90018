@@ -1,15 +1,18 @@
 package com.repmate.ui.home
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.repmate.data.repo.SessionRepository
 import com.repmate.engine.ExerciseType
-import com.repmate.engine.RepScore
 import com.repmate.engine.WorkoutSession
 import com.repmate.ui.auth.accountDisplayFor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -27,12 +30,7 @@ data class HomeUiState(
     val ghostDuelOpponentName: String? = null,
 )
 
-/**
- * The pieces of a [WorkoutSession] Home actually shows -- computed from one via [toLastSessionUi],
- * not a replacement for it, so wiring in the real `SessionRepository` later is a ViewModel-only
- * change: map whatever `SessionRepository.recent(1)` returns through that same function instead
- * of the fake session below.
- */
+/** The pieces of a [WorkoutSession] Home actually shows -- computed from one via [toLastSessionUi]. */
 data class LastSessionUi(
     val exercise: ExerciseType,
     val repCount: Int,
@@ -52,13 +50,16 @@ data class LeaderboardEntryUi(
  * deliberately not here -- see [CalibrationGateViewModel] -- since that's a navigation decision
  * made once, at the `RepMateNavGraph` level, not a piece of this screen's own display state.
  *
- * TODO(data.local, cloud): [lastSession] and [leaderboardTop3] are fake data shaped like the real
- * thing (a real [WorkoutSession] with real [RepScore]s, mapped the same way the real data would
- * be), not a live query -- `SessionRepository.recent(1)` already exists and is Hilt-wired (see
- * `RoomSessionRepository`) but this screen isn't reading from it yet, and there is no Firestore
- * leaderboard snapshot to read from at all. Both are call-site-only changes once ready: replace
- * [buildInitialUiState]'s fake [WorkoutSession] with the repository's real one, and its hardcoded
- * [LeaderboardEntryUi] list with a real snapshot mapped to the same shape.
+ * TODO(cloud): [leaderboardTop3] is fake data, not a live query -- there is no Firestore
+ * leaderboard snapshot to read from yet. It's a call-site-only change once ready: replace the
+ * hardcoded [LeaderboardEntryUi] list in [buildInitialUiState] with a real snapshot mapped to the
+ * same shape.
+ *
+ * [lastSession] is real: it's collected from [SessionRepository.recent] (limit 1) and mapped
+ * through [toLastSessionUi], so the card updates the moment a workout is saved, with no manual
+ * refresh. Null covers both "still loading" and "no sessions yet" -- [HomeScreen] already treats
+ * a null [HomeUiState.lastSession] as "show the empty state", which is also the correct display
+ * for a brand-new user who hasn't finished a workout yet.
  *
  * [HomeUiState.avatarInitial], unlike the rest of this state, is real: it reads the signed-in
  * [FirebaseAuth] user directly, the same way [com.repmate.ui.auth.AuthViewModel] and every other
@@ -69,34 +70,25 @@ class HomeViewModel
     @Inject
     constructor(
         private val firebaseAuth: FirebaseAuth,
+        private val sessionRepository: SessionRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(buildInitialUiState(firebaseAuth))
         val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+        init {
+            viewModelScope.launch {
+                sessionRepository.recent(limit = 1).collect { sessions ->
+                    _uiState.update { it.copy(lastSession = sessions.firstOrNull()?.toLastSessionUi()) }
+                }
+            }
+        }
     }
 
-private fun buildInitialUiState(firebaseAuth: FirebaseAuth): HomeUiState {
-    val fakeSession =
-        WorkoutSession(
-            id = "preview-session",
-            exercise = ExerciseType.SQUAT,
-            startedAt = System.currentTimeMillis(),
-            reps =
-                List(12) { index ->
-                    RepScore(
-                        repIndex = index,
-                        score = 8.2f,
-                        tempoSeconds = 2.1f,
-                        rangePercent = 92,
-                        pauseSeconds = 0.4f,
-                        reasons = listOf("good depth"),
-                    )
-                },
-        )
-
-    return HomeUiState(
+private fun buildInitialUiState(firebaseAuth: FirebaseAuth): HomeUiState =
+    HomeUiState(
         todayLabel = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
         avatarInitial = accountDisplayFor(firebaseAuth).avatarInitial,
-        lastSession = fakeSession.toLastSessionUi(),
+        lastSession = null,
         leaderboardTop3 =
             listOf(
                 LeaderboardEntryUi(rank = 1, name = "Priya", points = 1420, isCurrentUser = false),
@@ -105,7 +97,6 @@ private fun buildInitialUiState(firebaseAuth: FirebaseAuth): HomeUiState {
             ),
         ghostDuelOpponentName = "Priya",
     )
-}
 
 private fun WorkoutSession.toLastSessionUi(): LastSessionUi =
     LastSessionUi(
