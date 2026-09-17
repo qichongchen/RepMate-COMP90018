@@ -5,14 +5,17 @@ import androidx.room.RoomDatabase
 import com.repmate.data.local.RepScoreEntity
 import com.repmate.data.local.SessionDao
 import com.repmate.data.local.WorkoutSessionEntity
+import com.repmate.data.local.CalibrationProfileDao
+import com.repmate.data.local.CalibrationProfileEntity
 
 @Database(
     entities = [
         TestEntity::class,
         WorkoutSessionEntity::class,
-        RepScoreEntity::class
+        RepScoreEntity::class,
+        CalibrationProfileEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class RepMateDatabase : RoomDatabase() {
@@ -20,4 +23,6 @@ abstract class RepMateDatabase : RoomDatabase() {
     abstract fun testDao(): TestDao
 
     abstract fun sessionDao(): SessionDao
+
+    abstract fun calibrationProfileDao(): CalibrationProfileDao
 }
