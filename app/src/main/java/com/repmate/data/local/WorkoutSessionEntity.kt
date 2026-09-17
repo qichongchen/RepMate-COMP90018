@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class WorkoutSessionEntity(
     @PrimaryKey
     val id: String,
+    val ownerId: String,
     val exercise: String,
     val startedAt: Long
 )

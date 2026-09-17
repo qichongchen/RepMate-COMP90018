@@ -1,11 +1,13 @@
 package com.repmate.data.local
 
 import com.repmate.data.repo.SessionRepository
+import com.example.repmate.data.auth.AuthRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import javax.inject.Inject
 import javax.inject.Singleton
 import android.database.sqlite.SQLiteException
@@ -13,12 +15,50 @@ import android.util.Log
 
 @Singleton
 class RoomSessionRepository @Inject constructor(
-    private val sessionDao: SessionDao
+    private val sessionDao: SessionDao,
+    private val authRepository: AuthRepository
 ) : SessionRepository {
 
+    override suspend fun getById(id: String): WorkoutSession? {
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return null
+
+        val sessionEntity = sessionDao.getSessionById(
+            id = id,
+            ownerId = ownerId
+        ) ?: return null
+
+        val reps = sessionDao
+            .getRepScores(sessionEntity.id)
+            .map { repEntity ->
+                RepScore(
+                    repIndex = repEntity.repIndex,
+                    score = repEntity.score,
+                    tempoSeconds = repEntity.tempoSeconds,
+                    rangePercent = repEntity.rangePercent,
+                    pauseSeconds = repEntity.pauseSeconds,
+                    reasons = repEntity.reasons
+                        .split("|")
+                        .filter { it.isNotBlank() }
+                )
+            }
+
+        return WorkoutSession(
+            id = sessionEntity.id,
+            exercise = ExerciseType.valueOf(sessionEntity.exercise),
+            startedAt = sessionEntity.startedAt,
+            reps = reps,
+            frames = null
+        )
+    }
+
     override suspend fun save(session: WorkoutSession) {
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return
+
         val sessionEntity = WorkoutSessionEntity(
             id = session.id,
+            ownerId = ownerId,
             exercise = session.exercise.name,
             startedAt = session.startedAt
         )
@@ -54,32 +94,40 @@ class RoomSessionRepository @Inject constructor(
             "limit must be positive"
         }
 
-        return sessionDao.observeRecentSessions(limit).map { sessions ->
-            sessions.map { sessionEntity ->
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return flowOf(emptyList())
 
-                val reps = sessionDao
-                    .getRepScores(sessionEntity.id)
-                    .map { repEntity ->
-                        RepScore(
-                            repIndex = repEntity.repIndex,
-                            score = repEntity.score,
-                            tempoSeconds = repEntity.tempoSeconds,
-                            rangePercent = repEntity.rangePercent,
-                            pauseSeconds = repEntity.pauseSeconds,
-                            reasons = repEntity.reasons
-                                .split("|")
-                                .filter { it.isNotBlank() }
-                        )
-                    }
+        return sessionDao
+            .observeRecentSessions(
+                ownerId = ownerId,
+                limit = limit
+            )
+            .map { sessions ->
+                sessions.map { sessionEntity ->
 
-                WorkoutSession(
-                    id = sessionEntity.id,
-                    exercise = ExerciseType.valueOf(sessionEntity.exercise),
-                    startedAt = sessionEntity.startedAt,
-                    reps = reps,
-                    frames = null
-                )
-            }
+                    val reps = sessionDao
+                        .getRepScores(sessionEntity.id)
+                        .map { repEntity ->
+                            RepScore(
+                                repIndex = repEntity.repIndex,
+                                score = repEntity.score,
+                                tempoSeconds = repEntity.tempoSeconds,
+                                rangePercent = repEntity.rangePercent,
+                                pauseSeconds = repEntity.pauseSeconds,
+                                reasons = repEntity.reasons
+                                    .split("|")
+                                    .filter { it.isNotBlank() }
+                            )
+                        }
+
+                    WorkoutSession(
+                        id = sessionEntity.id,
+                        exercise = ExerciseType.valueOf(sessionEntity.exercise),
+                        startedAt = sessionEntity.startedAt,
+                        reps = reps,
+                        frames = null
+                    )
+                }
         }
     }
 }

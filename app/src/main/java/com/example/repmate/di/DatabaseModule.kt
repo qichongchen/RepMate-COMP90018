@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.example.repmate.data.RepMateDatabase
 import com.example.repmate.data.TestDao
 import com.repmate.data.local.SessionDao
+import com.repmate.data.local.CalibrationProfileDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -42,5 +43,12 @@ object DatabaseModule {
         database: RepMateDatabase
     ): SessionDao {
         return database.sessionDao()
+    }
+
+    @Provides
+    fun provideCalibrationProfileDao(
+        database: RepMateDatabase
+    ): CalibrationProfileDao {
+        return database.calibrationProfileDao()
     }
 }

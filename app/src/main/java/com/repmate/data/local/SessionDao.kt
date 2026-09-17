@@ -18,12 +18,28 @@ interface SessionDao {
 
     @Query(
         """
+    SELECT * FROM workout_sessions
+    WHERE ownerId = :ownerId
+    ORDER BY startedAt DESC
+    LIMIT :limit
+    """
+    )
+    fun observeRecentSessions(
+        ownerId: String,
+        limit: Int
+    ): Flow<List<WorkoutSessionEntity>>
+
+    @Query(
+        """
         SELECT * FROM workout_sessions
-        ORDER BY startedAt DESC
-        LIMIT :limit
+        WHERE id = :id AND ownerId = :ownerId
+        LIMIT 1
         """
     )
-    fun observeRecentSessions(limit: Int): Flow<List<WorkoutSessionEntity>>
+    suspend fun getSessionById(
+        id: String,
+        ownerId: String
+    ): WorkoutSessionEntity?
 
     @Query(
         """

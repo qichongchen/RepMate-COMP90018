@@ -1,5 +1,6 @@
 package com.repmate.data.local
 
+import com.example.repmate.data.auth.AuthRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
 import com.repmate.engine.WorkoutSession
@@ -16,7 +17,11 @@ class RoomSessionRepositoryTest {
     @Test
     fun saveAndReadSession() = runTest {
         val fakeDao = FakeSessionDao()
-        val repository = RoomSessionRepository(fakeDao)
+        val fakeAuth = FakeAuthRepository("user-1")
+        val repository = RoomSessionRepository(
+            fakeDao,
+            fakeAuth
+        )
 
         val session = WorkoutSession(
             id = "session-1",
@@ -49,7 +54,11 @@ class RoomSessionRepositoryTest {
     @Test
     fun recentReturnsSessionsNewestFirst() = runTest {
         val fakeDao = FakeSessionDao()
-        val repository = RoomSessionRepository(fakeDao)
+        val fakeAuth = FakeAuthRepository("user-1")
+        val repository = RoomSessionRepository(
+            fakeDao,
+            fakeAuth
+        )
 
         val olderSession = WorkoutSession(
             id = "older",
@@ -78,7 +87,11 @@ class RoomSessionRepositoryTest {
     @Test
     fun saveWithSameIdReplacesExistingSession() = runTest {
         val fakeDao = FakeSessionDao()
-        val repository = RoomSessionRepository(fakeDao)
+        val fakeAuth = FakeAuthRepository("user-1")
+        val repository = RoomSessionRepository(
+            fakeDao,
+            fakeAuth
+        )
 
         val originalSession = WorkoutSession(
             id = "session-1",
@@ -121,8 +134,49 @@ class RoomSessionRepositoryTest {
         assertEquals(9.0f, result[0].reps[0].score)
         assertEquals(listOf("updated"), result[0].reps[0].reasons)
     }
-}
 
+    @Test
+    fun recentOnlyReturnsSessionsForCurrentUser() = runTest {
+        val fakeDao = FakeSessionDao()
+        val fakeAuth = FakeAuthRepository("user-1")
+        val repository = RoomSessionRepository(
+            fakeDao,
+            fakeAuth
+        )
+
+        val user1Session = WorkoutSession(
+            id = "user1-session",
+            exercise = ExerciseType.SQUAT,
+            startedAt = 1000L,
+            reps = emptyList()
+        )
+
+        repository.save(user1Session)
+
+        fakeAuth.setCurrentUserId("user-2")
+
+        val user2Session = WorkoutSession(
+            id = "user2-session",
+            exercise = ExerciseType.PUSHUP,
+            startedAt = 2000L,
+            reps = emptyList()
+        )
+
+        repository.save(user2Session)
+
+        val user2Result = repository.recent(10).first()
+
+        assertEquals(1, user2Result.size)
+        assertEquals("user2-session", user2Result[0].id)
+
+        fakeAuth.setCurrentUserId("user-1")
+
+        val user1Result = repository.recent(10).first()
+
+        assertEquals(1, user1Result.size)
+        assertEquals("user1-session", user1Result[0].id)
+    }
+}
 
 private class FakeSessionDao : SessionDao {
 
@@ -147,12 +201,23 @@ private class FakeSessionDao : SessionDao {
     }
 
     override fun observeRecentSessions(
+        ownerId: String,
         limit: Int
     ): Flow<List<WorkoutSessionEntity>> {
         return sessions.map { currentSessions ->
             currentSessions
+                .filter { it.ownerId == ownerId }
                 .sortedByDescending { it.startedAt }
                 .take(limit)
+        }
+    }
+
+    override suspend fun getSessionById(
+        id: String,
+        ownerId: String
+    ): WorkoutSessionEntity? {
+        return sessions.value.firstOrNull {
+            it.id == id && it.ownerId == ownerId
         }
     }
 
@@ -166,5 +231,27 @@ private class FakeSessionDao : SessionDao {
 
     override suspend fun deleteRepScores(sessionId: String) {
         repScores.remove(sessionId)
+    }
+}
+
+private class FakeAuthRepository(
+    private var userId: String? = "user-1"
+) : AuthRepository {
+
+    override suspend fun signInAnonymously(): Result<String> {
+        val uid = userId
+            ?: return Result.failure(
+                IllegalStateException("No fake user")
+            )
+
+        return Result.success(uid)
+    }
+
+    override fun getCurrentUserId(): String? {
+        return userId
+    }
+
+    fun setCurrentUserId(userId: String?) {
+        this.userId = userId
     }
 }
