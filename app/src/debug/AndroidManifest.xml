@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-variant manifest. Everything declared here is merged into the debug build only and is
+  absent from release, so a component that exists purely for development never reaches a shipped
+  APK's manifest at all.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+          Sensor bring-up harness for the engine team, not part of the app's real navigation
+          flow, so it deliberately has no intent-filter and isn't the launcher. It stays
+          exported so it can still be launched directly during bring-up:
+              adb shell am start -n com.example.repmate/.SensorProbeActivity
+          (or add an Android Studio run configuration targeting this Activity specifically.)
+
+          Exported means any app on the device can start it, which is why the declaration lives
+          in this debug-only manifest rather than the main one: on a release build the Activity
+          is not declared, so it cannot be launched by anything. The in-app entry point is
+          separately gated on BuildConfig.DEBUG (see DebugSensorProbeButton in HomeScreen.kt).
+
+          See the KDoc in SensorProbeActivity.kt for what it measures and when it's safe to
+          delete for good. The class itself still lives in the main source set because
+          HomeScreen.kt references it directly; deleting the harness means deleting that
+          button, this declaration, and the class together.
+        -->
+        <activity
+            android:name="com.example.repmate.SensorProbeActivity"
+            android:exported="true"
+            android:label="RepMate sensor probe"
+            android:theme="@style/Theme.RepMate" />
+    </application>
+
+</manifest>

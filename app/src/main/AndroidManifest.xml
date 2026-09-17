@@ -30,20 +30,12 @@
         </activity>
 
         <!--
-          Sensor bring-up harness for the engine team, not part of the app's real navigation
-          flow, so it deliberately has no intent-filter and isn't the launcher. Still kept and
-          exported so it can be launched directly when someone needs to check the live sensor
-          pipeline on a device:
-              adb shell am start -n com.example.repmate/.SensorProbeActivity
-          (or add an Android Studio run configuration targeting this Activity specifically).
-          See the KDoc in SensorProbeActivity.kt for what it measures and when it's safe to
-          delete for good.
+          SensorProbeActivity is deliberately NOT declared here. It is the engine team's sensor
+          bring-up harness, and it is exported, so declaring it in this manifest would make it
+          launchable by any app on the device in a shipped release build. Its declaration lives
+          in app/src/debug/AndroidManifest.xml instead, which the manifest merger folds into the
+          debug variant only.
         -->
-        <activity
-            android:name=".SensorProbeActivity"
-            android:exported="true"
-            android:label="RepMate sensor probe"
-            android:theme="@style/Theme.RepMate" />
     </application>
 
 </manifest>
