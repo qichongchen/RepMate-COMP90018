@@ -15,7 +15,7 @@ import com.repmate.data.local.CalibrationProfileEntity
         RepScoreEntity::class,
         CalibrationProfileEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class RepMateDatabase : RoomDatabase() {

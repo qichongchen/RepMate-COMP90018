@@ -1,5 +1,6 @@
 package com.repmate.data.local
 
+import com.example.repmate.data.auth.AuthRepository
 import com.repmate.data.repo.CalibrationRepository
 import com.repmate.engine.CalibrationProfile
 import com.repmate.engine.ExerciseType
@@ -8,20 +9,31 @@ import javax.inject.Singleton
 
 @Singleton
 class RoomCalibrationRepository @Inject constructor(
-    private val calibrationProfileDao: CalibrationProfileDao
+    private val calibrationProfileDao: CalibrationProfileDao,
+    private val authRepository: AuthRepository
 ) : CalibrationRepository {
 
     override suspend fun hasProfile(
         exerciseType: ExerciseType
     ): Boolean {
-        return calibrationProfileDao.hasProfile(exerciseType.name)
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return false
+
+        return calibrationProfileDao.hasProfile(
+            ownerId = ownerId,
+            exercise = exerciseType.name
+        )
     }
 
     override suspend fun saveProfile(
         exerciseType: ExerciseType,
         profile: CalibrationProfile
     ) {
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return
+
         val entity = CalibrationProfileEntity(
+            ownerId = ownerId,
             exercise = exerciseType.name,
             minAmplitude = profile.minAmplitude,
             minRepDurationMs = profile.minRepDurationMs,
@@ -42,9 +54,14 @@ class RoomCalibrationRepository @Inject constructor(
         exerciseType: ExerciseType
     ): CalibrationProfile? {
 
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return null
+
         val entity =
-            calibrationProfileDao.getProfile(exerciseType.name)
-                ?: return null
+            calibrationProfileDao.getProfile(
+                ownerId = ownerId,
+                exercise = exerciseType.name
+            ) ?: return null
 
         return CalibrationProfile(
             minAmplitude = entity.minAmplitude,

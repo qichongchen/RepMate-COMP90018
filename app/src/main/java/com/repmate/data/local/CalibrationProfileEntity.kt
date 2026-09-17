@@ -1,11 +1,14 @@
 package com.repmate.data.local
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "calibration_profiles")
+@Entity(
+    tableName = "calibration_profiles",
+    primaryKeys = ["ownerId", "exercise"]
+)
+
 data class CalibrationProfileEntity(
-    @PrimaryKey
+    val ownerId: String,
     val exercise: String,
 
     val minAmplitude: Float,

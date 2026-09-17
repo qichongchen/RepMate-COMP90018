@@ -14,19 +14,24 @@ interface CalibrationProfileDao {
     @Query(
         """
         SELECT * FROM calibration_profiles
-        WHERE exercise = :exercise
+        WHERE ownerId = :ownerId
+          AND exercise = :exercise
         LIMIT 1
         """
     )
-    suspend fun getProfile(exercise: String): CalibrationProfileEntity?
+    suspend fun getProfile(ownerId: String, exercise: String): CalibrationProfileEntity?
 
     @Query(
         """
         SELECT EXISTS(
             SELECT 1 FROM calibration_profiles
-            WHERE exercise = :exercise
+            WHERE ownerId = :ownerId
+              AND exercise = :exercise
         )
         """
     )
-    suspend fun hasProfile(exercise: String): Boolean
+    suspend fun hasProfile(
+        ownerId: String,
+        exercise: String
+    ): Boolean
 }
