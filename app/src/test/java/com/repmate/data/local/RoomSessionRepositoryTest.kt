@@ -212,6 +212,15 @@ private class FakeSessionDao : SessionDao {
         }
     }
 
+    override suspend fun getSessionById(
+        id: String,
+        ownerId: String
+    ): WorkoutSessionEntity? {
+        return sessions.value.firstOrNull {
+            it.id == id && it.ownerId == ownerId
+        }
+    }
+
     override suspend fun getRepScores(
         sessionId: String
     ): List<RepScoreEntity> {

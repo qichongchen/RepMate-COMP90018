@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.Flow
  * may be called from the main dispatcher and must move their own work off it), caching, and
  * whether a session is also pushed to the cloud.
  *
- * Not free to choose: the two contracts below. They are what callers are allowed to assume.
+ * Not free to choose: the three contracts below. They are what callers are allowed to assume.
  *
  * One open question is flagged rather than decided here, because it is a storage question:
  * [WorkoutSession.frames] can hold tens of thousands of samples — a 30-second recording at
@@ -77,4 +77,11 @@ interface SessionRepository {
      * @param limit the maximum number of sessions to emit. Must be positive.
      */
     fun recent(limit: Int): Flow<List<WorkoutSession>>
+
+    /**
+     * Returns a single session by id for the current user.
+     *
+     * Returns null if the session does not exist or does not belong to the current user.
+     */
+    suspend fun getById(id: String): WorkoutSession?
 }

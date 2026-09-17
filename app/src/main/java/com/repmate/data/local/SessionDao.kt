@@ -31,6 +31,18 @@ interface SessionDao {
 
     @Query(
         """
+        SELECT * FROM workout_sessions
+        WHERE id = :id AND ownerId = :ownerId
+        LIMIT 1
+        """
+    )
+    suspend fun getSessionById(
+        id: String,
+        ownerId: String
+    ): WorkoutSessionEntity?
+
+    @Query(
+        """
         SELECT * FROM rep_scores
         WHERE sessionId = :sessionId
         ORDER BY repIndex ASC
