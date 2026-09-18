@@ -18,6 +18,8 @@ class SessionDaoTest {
     private lateinit var database: RepMateDatabase
     private lateinit var sessionDao: SessionDao
 
+    private val ownerId = "test-user"
+
     @Before
     fun setup() {
         database = Room.inMemoryDatabaseBuilder(
@@ -39,13 +41,18 @@ class SessionDaoTest {
     fun insertSession_canBeObserved() = runTest {
         val session = WorkoutSessionEntity(
             id = "session-1",
+            ownerId = ownerId,
             exercise = "SQUAT",
             startedAt = 1000L
         )
 
         sessionDao.insertSession(session)
 
-        val sessions = sessionDao.observeRecentSessions(10).first()
+        val sessions =
+            sessionDao.observeRecentSessions(
+                ownerId = ownerId,
+                limit = 10
+            ).first()
 
         assertEquals(1, sessions.size)
         assertEquals("session-1", sessions[0].id)
@@ -57,6 +64,7 @@ class SessionDaoTest {
     fun replaceSession_replacesOldRepScores() = runTest {
         val session = WorkoutSessionEntity(
             id = "session-1",
+            ownerId = ownerId,
             exercise = "SQUAT",
             startedAt = 1000L
         )
@@ -110,6 +118,7 @@ class SessionDaoTest {
         sessionDao.insertSession(
             WorkoutSessionEntity(
                 id = "old",
+                ownerId = ownerId,
                 exercise = "SQUAT",
                 startedAt = 1000L
             )
@@ -118,6 +127,7 @@ class SessionDaoTest {
         sessionDao.insertSession(
             WorkoutSessionEntity(
                 id = "new",
+                ownerId = ownerId,
                 exercise = "SQUAT",
                 startedAt = 3000L
             )
@@ -126,12 +136,17 @@ class SessionDaoTest {
         sessionDao.insertSession(
             WorkoutSessionEntity(
                 id = "middle",
+                ownerId = ownerId,
                 exercise = "SQUAT",
                 startedAt = 2000L
             )
         )
 
-        val sessions = sessionDao.observeRecentSessions(10).first()
+        val sessions =
+            sessionDao.observeRecentSessions(
+                ownerId = ownerId,
+                limit = 10
+            ).first()
 
         assertEquals(
             listOf("new", "middle", "old"),
@@ -145,16 +160,52 @@ class SessionDaoTest {
             sessionDao.insertSession(
                 WorkoutSessionEntity(
                     id = "session-$index",
+                    ownerId = ownerId,
                     exercise = "SQUAT",
                     startedAt = index.toLong()
                 )
             )
         }
 
-        val sessions = sessionDao.observeRecentSessions(2).first()
+        val sessions =
+            sessionDao.observeRecentSessions(
+                ownerId = ownerId,
+                limit = 2
+            ).first()
 
         assertEquals(2, sessions.size)
         assertEquals("session-4", sessions[0].id)
         assertEquals("session-3", sessions[1].id)
+    }
+
+    @Test
+    fun observeRecentSessions_onlyReturnsCurrentOwner() = runTest {
+        sessionDao.insertSession(
+            WorkoutSessionEntity(
+                id = "user-a-session",
+                ownerId = "user-a",
+                exercise = "SQUAT",
+                startedAt = 1000L
+            )
+        )
+
+        sessionDao.insertSession(
+            WorkoutSessionEntity(
+                id = "user-b-session",
+                ownerId = "user-b",
+                exercise = "SQUAT",
+                startedAt = 2000L
+            )
+        )
+
+        val sessions =
+            sessionDao.observeRecentSessions(
+                ownerId = "user-a",
+                limit = 10
+            ).first()
+
+        assertEquals(1, sessions.size)
+        assertEquals("user-a-session", sessions[0].id)
+        assertEquals("user-a", sessions[0].ownerId)
     }
 }
