@@ -1,5 +1,6 @@
 package com.repmate.data.cloud
 
+import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.repmate.data.repo.LeaderboardEntry
@@ -15,6 +16,10 @@ class FirestoreLeaderboardRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
 ) : LeaderboardRepository {
 
+    private companion object {
+        const val TAG = "RepMateLeaderboard"
+    }
+
     override fun topPlayers(limit: Int): Flow<List<LeaderboardEntry>> =
         callbackFlow {
             val listener = firestore
@@ -24,6 +29,10 @@ class FirestoreLeaderboardRepository @Inject constructor(
                 .addSnapshotListener { snapshot, error ->
 
                     if (error != null) {
+                        // Logged here, where the Firestore error code is still visible
+                        // (PERMISSION_DENIED etc.), then propagated: collectors turn it into a
+                        // value with observeTop rather than letting it reach the main thread.
+                        Log.w(TAG, "leaderboard query failed", error)
                         close(error)
                         return@addSnapshotListener
                     }
