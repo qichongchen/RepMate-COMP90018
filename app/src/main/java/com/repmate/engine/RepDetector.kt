@@ -321,6 +321,13 @@ class SquatRepDetector(
     private var lastRepEndMs: Long? = null
 
     /**
+     * Called whenever a window that opened is discarded, with every guard it failed. Purely
+     * observational: setting it changes nothing about which reps are counted. Called on the
+     * thread that calls [process], so a listener that touches UI state must hop threads itself.
+     */
+    var onRejectedWindow: ((RejectedWindow) -> Unit)? = null
+
+    /**
      * Set when a window is abandoned for running past [maxRepDurationMs], and cleared once
      * the smoothed signal drops back under [lowThreshold]. While it is set no new window may
      * open, so one long burst yields one abandonment rather than a train of them.
@@ -361,6 +368,20 @@ class SquatRepDetector(
                     // Open too long to be a squat: abandon the window rather than wait for a
                     // close that may never come. Checked before the close test, so a window
                     // past the limit can never fall through and be emitted as a rep.
+                    onRejectedWindow?.invoke(
+                        RejectedWindow(
+                            startMs = repStartMs,
+                            endMs = frame.tMillis,
+                            amplitude = maxSmoothed - minSmoothed,
+                            failures = listOf(
+                                GuardFailure(
+                                    RejectionGuard.ABANDONED_TOO_LONG,
+                                    (frame.tMillis - repStartMs).toDouble(),
+                                    maxRepDurationMs.toDouble()
+                                )
+                            )
+                        )
+                    )
                     phase = RepPhase.IDLE
                     awaitingLowCrossing = true
                     resetRepWindow()
@@ -471,14 +492,26 @@ class SquatRepDetector(
      * @return the recorded [RepEvent], or `null` if a guard rejected the window.
      */
     private fun closeRepWindow(endMs: Long): RepEvent? {
-        if (endMs - repStartMs < minRepDurationMs) return null // too brief to be a squat
-
+        val durationMs = endMs - repStartMs
         val amplitude = maxSmoothed - minSmoothed
-        if (amplitude < minAmplitude) return null // too small a swing to be a rep
-
         val previousEnd = lastRepEndMs
-        if (previousEnd != null && repStartMs - previousEnd < cooldownMs) {
-            return null // too soon after the last rep — almost certainly its rebound
+        val gapMs = if (previousEnd != null) repStartMs - previousEnd else null
+
+        // Every guard is evaluated, not just the first to fail, so a rejection report can say
+        // "too short AND too small" rather than hiding the second reason behind the first.
+        val failures = ArrayList<GuardFailure>(0)
+        if (durationMs < minRepDurationMs) { // too brief to be a squat
+            failures += GuardFailure(RejectionGuard.TOO_SHORT, durationMs.toDouble(), minRepDurationMs.toDouble())
+        }
+        if (amplitude < minAmplitude) { // too small a swing to be a rep
+            failures += GuardFailure(RejectionGuard.TOO_SMALL, amplitude.toDouble(), minAmplitude.toDouble())
+        }
+        if (gapMs != null && gapMs < cooldownMs) { // too soon after the last rep: its rebound
+            failures += GuardFailure(RejectionGuard.TOO_SOON_AFTER_LAST_REP, gapMs.toDouble(), cooldownMs.toDouble())
+        }
+        if (failures.isNotEmpty()) {
+            onRejectedWindow?.invoke(RejectedWindow(repStartMs, endMs, amplitude, failures))
+            return null
         }
 
         val event = RepEvent(

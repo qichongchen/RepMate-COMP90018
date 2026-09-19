@@ -119,7 +119,12 @@ class CalibrationViewModel
                         delay(1000)
                     }
 
-                    val capture = CalibrationCapture(exerciseType)
+                    var rejectedCount = 0
+                    val capture =
+                        CalibrationCapture(exerciseType) { window ->
+                            rejectedCount++
+                            Log.i(TAG, "rejected window #$rejectedCount: ${window.describe()}")
+                        }
                     Log.i(TAG, "$exerciseType capture started")
                     _uiState.value = CalibrationUiState.Capturing(exerciseType, repsCompleted = 0)
                     restartNoRepHint()

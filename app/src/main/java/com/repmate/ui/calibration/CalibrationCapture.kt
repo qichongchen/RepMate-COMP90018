@@ -6,6 +6,7 @@ import com.repmate.engine.ExerciseType
 import com.repmate.engine.JumpingJackRepDetector
 import com.repmate.engine.MotionFrame
 import com.repmate.engine.RepEvent
+import com.repmate.engine.RejectedWindow
 import com.repmate.engine.RepPhase
 import com.repmate.engine.SquatRepDetector
 
@@ -29,7 +30,11 @@ import com.repmate.engine.SquatRepDetector
  * Instances are single-use: once [isComplete], later frames are ignored, so frames still in
  * flight when the caller stops collecting cannot add a sixth rep.
  */
-class CalibrationCapture(val exerciseType: ExerciseType) {
+class CalibrationCapture(
+    val exerciseType: ExerciseType,
+    /** Told about every squat window the capture detector opened and discarded, and why. */
+    private val onRejectedWindow: (RejectedWindow) -> Unit = {},
+) {
     init {
         require(isSupported(exerciseType)) { "No real detector to calibrate $exerciseType with" }
     }
@@ -41,6 +46,7 @@ class CalibrationCapture(val exerciseType: ExerciseType) {
         when (exerciseType) {
             ExerciseType.SQUAT -> {
                 val detector = SquatRepDetector.forCalibrationCapture()
+                detector.onRejectedWindow = onRejectedWindow
                 processFrame = detector::process
                 movementInProgress = { detector.phase != RepPhase.IDLE }
             }

@@ -12,6 +12,7 @@ import com.repmate.engine.FormScorer
 import com.repmate.engine.JumpingJackRepDetector
 import com.repmate.engine.MotionFrame
 import com.repmate.engine.PushupRepDetector
+import com.repmate.engine.RejectionGuard
 import com.repmate.engine.RepEvent
 import com.repmate.engine.RepPhase
 import com.repmate.engine.RepScore
@@ -85,6 +86,7 @@ class LiveWorkoutViewModel
         private var calibrationProfile: CalibrationProfile? = null
         private val rawReps = mutableListOf<RepEvent>()
         private val scoredReps = mutableListOf<RepScore>()
+        private val rejectedByGuard = mutableMapOf<RejectionGuard, Int>()
 
         private lateinit var processFrame: (MotionFrame) -> RepEvent?
         private lateinit var currentPhase: () -> RepPhase
@@ -123,6 +125,10 @@ class LiveWorkoutViewModel
             when (exerciseType) {
                 ExerciseType.SQUAT -> {
                     val detector = SquatRepDetector(calibrationProfile)
+                    detector.onRejectedWindow = { window ->
+                        window.failures.forEach { rejectedByGuard.merge(it.guard, 1, Int::plus) }
+                        Log.i(TAG, "rejected window: ${window.describe()}")
+                    }
                     processFrame = detector::process
                     currentPhase = { detector.phase }
                 }
@@ -179,6 +185,8 @@ class LiveWorkoutViewModel
         /** Saves the session for real via [SessionRepository], then fires [workoutFinished]. */
         fun onEndWorkoutClicked() {
             if (!::activeExerciseType.isInitialized) return
+            Log.i(TAG, "workout ended: ${scoredReps.size} reps counted, windows rejected by guard: " +
+                (rejectedByGuard.takeIf { it.isNotEmpty() } ?: "none"))
             frameCollectionJob?.cancel()
             timerJob?.cancel()
 
