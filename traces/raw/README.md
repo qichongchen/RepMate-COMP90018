@@ -27,12 +27,13 @@ untouched. The unstripped exports are kept off-repo by the person who recorded t
 
 **The two jumping-jack zips were stripped further.** Those exports also carried the phone's
 **microphone**: `Microphone.mp4`, an audio recording of the room the set was performed in,
-and `Microphone.csv`, its level series. None of the four squat zips has either, so this was
-not covered above. Both are removed, along with `Location.csv` (33 fixes in
-`jumpingjack_10_mohit_paced_raw.zip`, 18 in `..._fast_raw.zip`), and `device id` is blanked.
-Checked entry by entry against the originals: the other 12 entries in each zip are
-byte-identical, `Metadata.csv` differs in `device id` alone, and the blanked id appears
-nowhere in either output. `Barometer.csv` was kept: its `relativeAltitude` is a pressure
+and `Microphone.csv`, its level series. The author was counting reps out loud, so the mp4 holds
+voice. None of the four squat zips has either, so this was not covered above. Both are
+removed, along with `Location.csv` (33 fixes in `jumpingjack_10_mohit_paced_raw.zip`, 18 in
+`..._fast_raw.zip`). `Metadata.csv` is **deleted outright** rather than blanked, which also
+drops the device name, recording time and timezone that the squat zips still carry. Checked
+entry by entry against the originals: the 12 entries left in each zip are byte-identical, and
+the `device id` appears nowhere in either output. `Barometer.csv` was kept: its `relativeAltitude` is a pressure
 reading that starts at 0, not an elevation, and the squat zips already carry the same file.
 
 ## What produced what
@@ -46,8 +47,8 @@ endings git normalises. Verified byte-for-byte at the time of commit.
 | `squat_10_fast_raw.zip` | `TotalAcceleration.csv` | `squat_10_fast.csv` | Pixel, ~99 Hz |
 | `squat_10_hit_raw.zip` | `TotalAcceleration.csv` | `squat_10_hit.csv` | Samsung SM-S936B, ~58 Hz |
 | `squat_10_lisa_raw.zip` | `AccelerometerUncalibrated.csv` | `squat_10_lisa.csv` | iPhone 14 Pro, ~100 Hz |
-| `jumpingjack_10_mohit_paced_raw.zip` | `TotalAcceleration.csv` | `jumpingjack_10_mohit_paced.csv` | Pixel 10a, ~99 Hz |
-| `jumpingjack_10_mohit_paced_fast_raw.zip` | `TotalAcceleration.csv` | `jumpingjack_10_mohit_paced_fast.csv` | Pixel 10a, ~99 Hz |
+| `jumpingjack_10_mohit_paced_raw.zip` | `TotalAcceleration.csv` | `jumpingjack_10_mohit_paced.csv` | Pixel, ~99 Hz |
+| `jumpingjack_10_mohit_paced_fast_raw.zip` | `TotalAcceleration.csv` | `jumpingjack_10_mohit_paced_fast.csv` | Pixel, ~99 Hz |
 
 Lisa's is the odd one out, and deliberately so. Sensor Logger's iOS export has no
 `TotalAcceleration.csv` at all, and iOS's `Accelerometer.csv` has gravity already removed —
@@ -88,7 +89,7 @@ traces.
 | `Magnetometer.csv` / uncalibrated | ✅ | ✅ | — | — | ✅ | ✅ |
 | `Compass.csv`, `Barometer.csv` | ✅ | ✅ | — | — | ✅ | ✅ |
 | `Location.csv` (GPS) | removed | removed | — | — | removed | removed |
-| `Metadata.csv` (`device id` blanked) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `Metadata.csv` (`device id` blanked) | ✅ | ✅ | ✅ | ✅ | removed | removed |
 | `Annotation.csv` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `Microphone.mp4` / `.csv` (room audio) | — | — | — | — | removed | removed |
 
@@ -122,4 +123,7 @@ keeps the original.
    their identifier, not yours to publish.
 
 `Metadata.csv` also records the device name and recording timezone. Neither is a location
-and both are left as they are, but check they say nothing you would not want public.
+and the squat zips leave them as they are, but check they say nothing you would not want
+public. The jumping-jack zips delete `Metadata.csv` entirely instead: nothing in the engine
+reads it, and the sample rate is recoverable from the timestamps. Prefer that for a new
+recording unless you need the recorded sensor list.
