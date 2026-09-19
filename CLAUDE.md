@@ -6,15 +6,15 @@ Context for Claude Code. Read this fully before writing or editing code. It defi
 
 ## What RepMate is
 
-An Android app that turns a phone into a bodyweight-exercise form coach. Using only the accelerometer and gyroscope, it automatically counts reps (squats, push-ups, jumping jacks), scores each rep's movement quality, and shows a motion-replay graph explaining the score. It adds ghost duels and a leaderboard via Firebase. Phone-only: no wearable, no camera, no external hardware.
+An Android app that turns a phone into a bodyweight-exercise form coach. It automatically counts reps (squats, push-ups, jumping jacks), scores each rep's movement quality, and shows a motion-replay graph explaining the score. Squats and jumping jacks are counted from the phone's accelerometer and gyroscope alone; push-ups are counted from the camera (see "Push-ups: camera pose detection" below). It adds ghost duels and a leaderboard via Firebase. Phone-only: no wearable, no external hardware.
 
-This is **signal-processing and state-machine engineering, not machine learning or "AI."** Keep it that way.
+This is **signal-processing and state-machine engineering, not machine learning or "AI."** Keep it that way. The one trained model is ML Kit's off-the-shelf pose detector, used only to obtain body landmarks for push-ups; every decision built on top of it (counting, scoring) is still rule-based.
 
 ---
 
 ## Golden rules (do not break these)
 
-1. **The engine is pure Kotlin.** Everything in `engine/` and `replay/` has **no Android imports** — no `android.*`, no `SensorManager`, no `Context`. It must run in plain JVM unit tests. Sensor reading lives only in `sensors/`.
+1. **The engine is pure Kotlin.** Everything in `engine/` and `replay/` has **no Android imports** — no `android.*`, no `SensorManager`, no `Context`. It must run in plain JVM unit tests. Sensor reading lives only in `sensors/`. The same holds for the camera path: CameraX and ML Kit types must never reach `engine/` or `replay/` -- the pose detector lives outside them and hands the engine plain Kotlin data.
 2. **The engine consumes `Flow<MotionFrame>` and does not care where frames come from.** Live sensors and recorded JSON files both produce the same stream, so the code we demo is identical to the code we test. Never leak a sensor type into the engine.
 3. **The data models below are frozen.** Do not rename or restructure `MotionFrame`, `RepEvent`, `RepScore`, or `WorkoutSession` without being asked — every workstream depends on them.
 4. **Add KDoc to every public class and non-trivial function**, especially signal-processing logic. The authors are examined orally on this code; comments must explain *why*, not just *what*.
@@ -34,6 +34,7 @@ This is **signal-processing and state-machine engineering, not machine learning 
 - Room for local storage (offline source of truth)
 - Firebase: Authentication (anonymous + Google), Cloud Firestore
 - `SensorManager` (accelerometer, gyroscope), `FusedLocationProviderClient` (safety check-in only)
+- CameraX + ML Kit Pose Detection (push-ups only)
 - Kotlinx Serialization for session JSON
 - Gradle Kotlin DSL; JUnit + kotlin.test (+ Turbine for Flow tests)
 
@@ -133,7 +134,7 @@ data class WorkoutSession(
 
 ## How rep detection works (domain primer)
 
-So you generate correct logic, not guesses:
+So you generate correct logic, not guesses. This section describes the IMU path (squats, jumping jacks); push-ups follow the camera path in the next section.
 
 1. Sample accelerometer + gyroscope at ~50 Hz; pair into `MotionFrame`s.
 2. Low-pass filter the signal (moving average or exponential) to remove jitter.
@@ -143,7 +144,17 @@ So you generate correct logic, not guesses:
 
 Thresholds are tuned from recorded traces via the replayer — that's why recording and replay are core, not optional.
 
-**Important scope note:** the app judges **movement quality** (depth, tempo, control, completeness), **not body posture** (knees, back). A single phone can't see joint geometry. Never write code or comments that claim posture correctness.
+**Important scope note:** the app judges **movement quality** (depth, tempo, control, completeness), **not body posture** (knees, back). A phone in a pocket can't see joint geometry. Never write code or comments that claim posture correctness.
+
+---
+
+## Push-ups: camera pose detection (separate path)
+
+Push-ups are detected with the **camera**, using **ML Kit pose detection**, as a path separate from the IMU engine. This came from our professor's feedback: a phone in a pocket can't see push-up motion, so the accelerometer and gyroscope are the wrong sensors for it.
+
+- **The IMU engine is unaffected.** Squats and jumping jacks still run on `MotionFrame`s from `sensors/`, exactly as above. `MotionFrame` stays frozen and IMU-only; do not add pose fields to it.
+- **Keep `com.repmate.engine` pure Kotlin.** The pose detector must not pull Android, CameraX or ML Kit types into `engine/` or `replay/`. Camera and ML Kit code lives in its own package, the way `sensors/` is the one place allowed `android.*` for sensors, and converts landmarks into plain Kotlin types before anything in the engine sees them. Rep counting on top of those landmarks is rule-based and needs replay tests like every other detector (rule 5).
+- **Degrade gracefully (rule 7).** A denied camera permission, no camera, or no person in frame must never crash: show a clear message or fall back.
 
 ---
 
@@ -170,8 +181,7 @@ Thresholds are tuned from recorded traces via the replayer — that's why record
 
 ## Scope guardrails — do NOT build these (they are v2 / out of scope)
 
-- Camera or pose estimation of any kind (no CameraX, no ML Kit, no MediaPipe).
-- Machine-learning classification (no TensorFlow Lite). The MVP is rule-based.
+- Machine-learning classification of our own (no TensorFlow Lite models we train or ship). The MVP is rule-based; the only trained model is ML Kit's off-the-shelf pose detector for push-ups.
 - Runtime calls to any external LLM/AI to judge reps or form.
 - Heart-rate / wearable integration, fatigue detection, exercise auto-classification, left/right symmetry.
 - Pull-ups or any exercise requiring the phone to be off-body.
