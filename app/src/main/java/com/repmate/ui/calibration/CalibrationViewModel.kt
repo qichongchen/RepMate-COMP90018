@@ -120,6 +120,7 @@ class CalibrationViewModel
                     }
 
                     val capture = CalibrationCapture(exerciseType)
+                    Log.i(TAG, "$exerciseType capture started")
                     _uiState.value = CalibrationUiState.Capturing(exerciseType, repsCompleted = 0)
                     restartNoRepHint()
 
@@ -128,6 +129,14 @@ class CalibrationViewModel
                     sensorSource.frames.collect { frame ->
                         val rep = capture.onFrame(frame)
                         if (rep != null) {
+                            // One line per captured rep, so a derived value in the profile below
+                            // can be traced to the rep that set it.
+                            val gapMs = capture.reps.getOrNull(capture.reps.size - 2)?.let { rep.startMs - it.endMs }
+                            Log.i(
+                                TAG,
+                                "rep ${capture.reps.size}: duration ${rep.endMs - rep.startMs} ms, " +
+                                    "amplitude %.2f, gap after previous ${gapMs?.let { "$it ms" } ?: "-"}".format(rep.amplitude),
+                            )
                             repFeedback.onRepDetected(capture.reps.size)
                             restartNoRepHint()
                         }
@@ -184,7 +193,7 @@ class CalibrationViewModel
         }
 
         companion object {
-            private const val TAG = "Calibration"
+            private const val TAG = "RepMateCalibration"
 
             /** Long enough to tap Start and put the phone in a front pocket. */
             const val COUNTDOWN_SECONDS = 5

@@ -1,6 +1,7 @@
 package com.repmate.ui.workout
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.repmate.data.repo.CalibrationRepository
@@ -99,6 +100,7 @@ class LiveWorkoutViewModel
 
             viewModelScope.launch {
                 calibrationProfile = calibrationRepository.getProfile(exerciseType)
+                Log.i(TAG, "$exerciseType workout started, " + (calibrationProfile?.describe() ?: "no profile: tuned defaults"))
                 bindDetector(exerciseType)
                 startTimer()
                 collectFrames()
@@ -159,6 +161,13 @@ class LiveWorkoutViewModel
             val score = formScorer.score(repEvent, calibrationProfile, previousReps = rawReps.toList())
             rawReps += repEvent
             scoredReps += score
+            // Same shape as RepMateCalibration's per-rep line, so a workout's reps can be read
+            // side by side with the calibration reps its profile was derived from.
+            Log.i(
+                TAG,
+                "rep ${scoredReps.size}: duration ${repEvent.endMs - repEvent.startMs} ms, " +
+                    "amplitude %.2f, score %.1f".format(repEvent.amplitude, score.score),
+            )
             repFeedback.onRepDetected(scoredReps.size)
             _uiState.update { it.copy(repCount = scoredReps.size, lastRepScore = score) }
         }
@@ -197,6 +206,10 @@ class LiveWorkoutViewModel
                         }
                     }
                 }
+        }
+
+        private companion object {
+            const val TAG = "RepMateWorkout"
         }
 
         override fun onCleared() {
