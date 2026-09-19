@@ -35,6 +35,7 @@ import com.repmate.ui.home.HomeScreen
 import com.repmate.ui.leaderboard.LeaderboardScreen
 import com.repmate.ui.onboarding.OnboardingGateViewModel
 import com.repmate.ui.onboarding.OnboardingScreen
+import com.repmate.ui.motionreplay.MotionReplayScreen
 import com.repmate.ui.profile.ProfileScreen
 import com.repmate.ui.profile.RecalibrateExercisePicker
 import com.repmate.ui.theme.RepMateTheme
@@ -143,10 +144,9 @@ private fun String?.toBottomNavItemOrNull(): BottomNavItem? =
     }
 
 /**
- * RepMate's full navigation graph. History, Leaderboard, and Motion Replay are still
- * [PlaceholderScreen]s; every other destination is a real screen built one at a time on this
- * graph, which wires up the routes, the arguments they carry, and the navigation decisions
- * between them.
+ * RepMate's full navigation graph. History and Leaderboard are still [PlaceholderScreen]s; every
+ * other destination is a real screen built one at a time on this graph, which wires up the
+ * routes, the arguments they carry, and the navigation decisions between them.
  *
  * The bottom nav bar is hosted here, in a [Scaffold] wrapping the [NavHost], rather than inside
  * each of home/history/leaderboard/profile individually -- it only shows for those four routes,
@@ -351,7 +351,13 @@ fun RepMateNavGraph(
                 arguments = listOf(navArgument(RepMateDestinations.ARG_SESSION_ID) { type = NavType.StringType }),
             ) { backStackEntry ->
                 val sessionId = backStackEntry.arguments?.getString(RepMateDestinations.ARG_SESSION_ID).orEmpty()
-                PlaceholderScreen("motion_replay/$sessionId")
+                MotionReplayScreen(
+                    sessionId = sessionId,
+                    onBackClick = { navController.popBackStack() },
+                    onCalibrateClick = { exerciseType ->
+                        navController.navigate(RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START))
+                    },
+                )
             }
 
             composable(
