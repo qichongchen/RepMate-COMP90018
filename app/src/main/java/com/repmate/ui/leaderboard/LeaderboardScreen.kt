@@ -73,6 +73,14 @@ fun LeaderboardScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        if (uiState.isUnavailable) {
+            Text(
+                text = "The leaderboard is unavailable right now. Try again later.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         LazyColumn(
             modifier = Modifier.weight(1f),
         ) {

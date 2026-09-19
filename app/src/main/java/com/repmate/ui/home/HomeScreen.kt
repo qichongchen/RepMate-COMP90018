@@ -127,7 +127,7 @@ private fun HomeContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                LeaderboardCard(entries = uiState.leaderboardTop3)
+                LeaderboardCard(entries = uiState.leaderboardTop3, unavailable = uiState.leaderboardUnavailable)
             }
 
             if (BuildConfig.DEBUG) {
@@ -304,8 +304,16 @@ private fun LastSessionCard(
 private fun LeaderboardCard(
     entries: List<LeaderboardEntryUi>,
     modifier: Modifier = Modifier,
+    unavailable: Boolean = false,
 ) {
     RepMateCard(modifier = modifier) {
+        if (unavailable) {
+            Text(
+                text = "Leaderboard unavailable right now",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         entries.forEachIndexed { index, entry ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

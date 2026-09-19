@@ -1,9 +1,12 @@
 package com.repmate.ui.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.repmate.data.repo.LeaderboardLoad
 import com.repmate.data.repo.LeaderboardRepository
+import com.repmate.data.repo.observeTop
 import com.repmate.data.repo.SessionRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.WorkoutSession
@@ -28,6 +31,8 @@ data class HomeUiState(
     val lastSession: LastSessionUi? = null,
     val leaderboardTop3: List<LeaderboardEntryUi> = emptyList(),
     val ghostDuelOpponentName: String? = null,
+    /** True when the leaderboard query failed; [leaderboardTop3] is then empty, not stale. */
+    val leaderboardUnavailable: Boolean = false,
 )
 
 data class LastSessionUi(
@@ -67,21 +72,32 @@ constructor(
         }
 
         viewModelScope.launch {
-            leaderboardRepository.topPlayers(3).collect { entries ->
-                val currentUserId = firebaseAuth.currentUser?.uid
+            leaderboardRepository.observeTop(3).collect { load ->
+                when (load) {
+                    is LeaderboardLoad.Loaded -> {
+                        val currentUserId = firebaseAuth.currentUser?.uid
 
-                _uiState.update {
-                    it.copy(
-                        leaderboardTop3 =
-                            entries.mapIndexed { index, entry ->
-                                LeaderboardEntryUi(
-                                    rank = index + 1,
-                                    name = entry.displayName,
-                                    points = entry.points,
-                                    isCurrentUser = entry.userId == currentUserId,
-                                )
-                            }
-                    )
+                        _uiState.update {
+                            it.copy(
+                                leaderboardUnavailable = false,
+                                leaderboardTop3 =
+                                    load.entries.mapIndexed { index, entry ->
+                                        LeaderboardEntryUi(
+                                            rank = index + 1,
+                                            name = entry.displayName,
+                                            points = entry.points,
+                                            isCurrentUser = entry.userId == currentUserId,
+                                        )
+                                    },
+                            )
+                        }
+                    }
+                    // The rest of Home does not depend on the leaderboard: show it as
+                    // unavailable and carry on, rather than crash the app over a side panel.
+                    is LeaderboardLoad.Failed -> {
+                        Log.w("RepMateLeaderboard", "leaderboard unavailable on Home", load.cause)
+                        _uiState.update { it.copy(leaderboardUnavailable = true, leaderboardTop3 = emptyList()) }
+                    }
                 }
             }
         }
