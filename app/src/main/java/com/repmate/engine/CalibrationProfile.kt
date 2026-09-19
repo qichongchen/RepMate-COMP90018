@@ -143,6 +143,18 @@ package com.repmate.engine
  * @property sampleCount how many reps the profile was derived from.
  * @property softestSampleAmplitude raw measurement each threshold is traceable to, kept so a
  *   profile can be explained rather than merely applied.
+ * @property loudestSampleAmplitude raw largest sample amplitude — the other end of the band
+ *   [softestSampleAmplitude] opens, kept for the same reason. [evaluate] already measures it
+ *   for the [MAX_AMPLITUDE_SPREAD] check but previously discarded it, so the spread a set was
+ *   *accepted* on could not be read back off the profile: a rejected set reports its spread in
+ *   the rejection message, an accepted one reported nothing. Retaining it closes that gap.
+ *
+ *   Defaults to [softestSampleAmplitude] rather than to `0f` so that every constructible
+ *   profile satisfies `loudestSampleAmplitude >= softestSampleAmplitude` — the invariant any
+ *   consumer of the pair will rely on. A profile built without it then reads as a set with no
+ *   measured spread, which is merely uninformative, rather than as one containing a
+ *   zero-amplitude rep, which [evaluate] rejects as impossible and no consumer should have to
+ *   defend against.
  * @property shortestSampleMs raw shortest sample duration.
  * @property longestSampleMs raw longest sample duration.
  * @property fastestSampleGapMs raw shortest gap between consecutive samples.
@@ -157,6 +169,7 @@ data class CalibrationProfile(
     val cooldownMs: Long,
     val sampleCount: Int,
     val softestSampleAmplitude: Float,
+    val loudestSampleAmplitude: Float = softestSampleAmplitude,
     val shortestSampleMs: Long,
     val longestSampleMs: Long,
     val fastestSampleGapMs: Long,
@@ -169,8 +182,11 @@ data class CalibrationProfile(
     /** Multi-line record of what was derived and why, for logging. */
     fun describe(): String = buildString {
         appendLine("CalibrationProfile from $sampleCount reps" + if (wasClamped) " (CLAMPED)" else "")
-        appendLine("  samples: softest %.2f, durations %d-%d ms, fastest gap %d ms"
-            .format(softestSampleAmplitude, shortestSampleMs, longestSampleMs, fastestSampleGapMs))
+        appendLine("  samples: amplitudes %.2f-%.2f, durations %d-%d ms, fastest gap %d ms"
+            .format(
+                softestSampleAmplitude, loudestSampleAmplitude,
+                shortestSampleMs, longestSampleMs, fastestSampleGapMs
+            ))
         notes.forEach { appendLine("  $it") }
     }.trimEnd()
 
@@ -377,6 +393,7 @@ data class CalibrationProfile(
                     cooldownMs = cooldownMs,
                     sampleCount = ordered.size,
                     softestSampleAmplitude = softest,
+                    loudestSampleAmplitude = loudest,
                     shortestSampleMs = shortest,
                     longestSampleMs = longest,
                     fastestSampleGapMs = fastestGap,
