@@ -388,6 +388,9 @@ fun RepMateNavGraph(
                                 navController.popBackStack()
                         }
                     },
+                    // Only reachable from the push-up "not available" state: back to wherever
+                    // calibration was entered from, rather than on into a workout.
+                    onBack = { navController.popBackStack() },
                 )
             }
 

@@ -130,9 +130,31 @@ package com.repmate.engine
  * in amplitude (Hit) and **1.44x** in duration (Hit). The limits below sit well clear of
  * those. But a calibration polluted by Hit's wobble spreads only **2.24x / 1.58x** — inside
  * both limits. **The gate would not reject it.** Pollution of that kind has to be prevented
- * at capture time by only measuring inside a prompted rep window; see the note on capture in
- * [SquatRepDetector]'s calibration constructor. The gate is a backstop against gross
- * nonsense, not a substitute for capturing the right windows.
+ * at capture time. The gate is a backstop against gross nonsense, not a substitute for
+ * capturing the right reps.
+ *
+ * ## How capture prevents it: permissive guards, not prompted windows
+ * This note used to say the prevention was a *prompted rep window* — cue each rep, measure
+ * only inside the cue. That is superseded by [SquatRepDetector.forCalibrationCapture], for
+ * three reasons:
+ *
+ * 1. **Prompting produces the wrong population.** The failure described above — calibration
+ *    reps averaging 7.0 against a real set's 1.3 — is what paced, cued reps look like: slow
+ *    and deep, performed *for* the prompt. A per-rep cue invites exactly that. Capture now
+ *    runs over one continuous set at the user's own pace, and the screen tells them to rep
+ *    as they would in a workout.
+ * 2. **Prompting writes our timing into the profile.** [fastestSampleGapMs] and the durations
+ *    would measure the cue's rhythm rather than the user's, and the derived [cooldownMs] and
+ *    duration floor with them.
+ * 3. **The pollution came from loosening amplitude, which capture does not do.** Hit's
+ *    wobble swings 0.83; the capture detector keeps the default 0.94 floor, so the wobble
+ *    never reaches this gate. Only the duration floor is lowered, and the reasons each other
+ *    guard stays at its default — Lisa's rebounds among them — are measured in that factory's
+ *    documentation and pinned in `CalibrationCaptureTest`.
+ *
+ * What survives of the prompted-window idea is the window around the *whole set*: capture
+ * starts after a countdown, so the phone going into the pocket is never measured, and stops
+ * at the fifth rep.
  *
  * Pure Kotlin, no Android dependencies.
  *

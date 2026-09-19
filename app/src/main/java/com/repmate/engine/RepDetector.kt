@@ -504,6 +504,49 @@ class SquatRepDetector(
     }
 
     companion object {
+        /**
+         * The detector a calibration set is captured with: the tuned defaults, with the
+         * duration floor lowered to [CalibrationProfile.MIN_REP_DURATION_FLOOR_MS] and every
+         * other guard left alone.
+         *
+         * ## The bootstrap problem
+         * A profile is derived from reps a detector has already accepted, so capturing with
+         * the defaults means calibration can only learn from reps the defaults count. For
+         * duration that is exactly the wrong way round: live reps of 300-420 ms were dropped
+         * by the 550 ms floor, and a user who squats that fast would calibrate with those
+         * reps missing — the profile could never learn the pace it exists to accommodate.
+         * The capture floor is the lowest floor a profile is allowed to derive, so capture
+         * never rejects a rep on duration that the resulting profile would accept.
+         *
+         * ## Why only duration is loosened
+         * Each other guard was checked against the four recorded squat traces, and each one
+         * is rejecting something real that would otherwise land in the calibration set:
+         *
+         * - **[minAmplitude] stays at 0.94.** Hit's in-set wobble swings 0.83 and handling
+         *   bursts 0.86; the softest genuine rep in the library is 1.03, so the default loses
+         *   no known rep. Lowering it admits the wobble, and [CalibrationProfile]'s
+         *   consistency gate is too wide to reject a set polluted that way.
+         * - **[cooldownMs] stays at 500 ms.** Lisa's reps are followed by rebounds starting
+         *   372-401 ms after the rep ends, lasting 281-382 ms and swinging up to 2.03 —
+         *   long and strong enough to pass every other capture guard. At a 200 ms cooldown
+         *   both count, her set reads 12, and her first five are rejected on amplitude
+         *   spread. No live miss has been traced to the cooldown.
+         * - **[maxRepDurationMs] stays at 3000 ms**, the no-stuck-window guard; it is not a
+         *   per-user threshold in any sense that capture could be too strict about.
+         * - **The trigger thresholds are not calibrated at all** (see the calibration
+         *   constructor), so a rep too shallow to cross 10.15 cannot be rescued here either.
+         *
+         * Replayed at 0.6x time (reps of 417-514 ms), the fast and pocket sets are counted
+         * 10 of 10 by this detector and 0 and 5 of 10 by the defaults.
+         *
+         * ## What it does not reject
+         * Handling bursts — the phone going into the pocket — are real movement and pass
+         * every guard here, as they do in the defaults. Excluding them is the capture
+         * window's job: the caller must only feed frames recorded after the user is set.
+         */
+        fun forCalibrationCapture(): SquatRepDetector =
+            SquatRepDetector(minRepDurationMs = CalibrationProfile.MIN_REP_DURATION_FLOOR_MS)
+
         // The tuned defaults, named so a CalibrationProfile can fall back to exactly these
         // values rather than repeating the literals. Every figure and its justification is
         // in the guards section of this class's documentation; these are unchanged.

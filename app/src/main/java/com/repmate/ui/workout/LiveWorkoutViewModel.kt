@@ -42,9 +42,8 @@ data class LiveWorkoutUiState(
 )
 
 /**
- * Backs [LiveWorkoutScreen]. Unlike `CalibrationViewModel`, this one is wired to real sensor
- * data end to end: [SensorSource.frames] feeds the real detector for [ExerciseType.SQUAT]/
- * [ExerciseType.JUMPING_JACK] (squat and jumping-jack both have recorded-trace-backed detectors
+ * Backs [LiveWorkoutScreen]. Wired to real sensor data end to end, like `CalibrationViewModel`:
+ * [SensorSource.frames] feeds the real detector for [ExerciseType.SQUAT]/[ExerciseType.JUMPING_JACK] (squat and jumping-jack both have recorded-trace-backed detectors
  * already), each detected [RepEvent] is scored by the real [FormScorer] against the user's saved
  * [CalibrationProfile] (or `null`, which [FormScorer] already handles), and the score is
  * persisted for real via [SessionRepository] once the workout ends.

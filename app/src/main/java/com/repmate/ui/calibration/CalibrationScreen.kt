@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,23 +53,26 @@ import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.theme.RepMateTheme
 
 /**
- * A 5-rep calibration set for one exercise, reached from Home's exercise chips (and from
- * Live Workout's own pre-check) whenever [ExerciseType] has no saved [CalibrationProfile] yet.
+ * A 5-rep calibration set for one exercise, reached from Home's exercise chips whenever
+ * [ExerciseType] has no saved [CalibrationProfile] yet, and from Profile's "Recalibrate".
  *
- * Split into this stateful wrapper and the stateless [CalibrationContent] below, same reasoning as
- * every other screen in this app: previews render from a plain [CalibrationUiState], no Hilt
- * required.
+ * Every rep shown here is a rep the real detector counted from the live sensor stream -- see
+ * [CalibrationViewModel]. Split into this stateful wrapper and the stateless [CalibrationContent]
+ * below, same reasoning as every other screen in this app: previews render from a plain
+ * [CalibrationUiState], no Hilt required.
  *
  * @param exerciseType parsed by the caller (`NavGraph.kt`) from the `calibration/{exerciseType}`
- *   route, the same pattern used for Live Workout's own placeholder.
+ *   route.
  * @param onCalibrationComplete invoked once, either after an accepted calibration is persisted or
- *   immediately on "Skip for now" -- both mean "proceed into Live Workout", so this screen doesn't
- *   distinguish them for the caller.
+ *   on "Continue without calibrating" -- both mean "proceed", so this screen doesn't distinguish
+ *   them for the caller. Nothing is saved on the second path.
+ * @param onBack leaves without proceeding; only offered when [exerciseType] can't be calibrated.
  */
 @Composable
 fun CalibrationScreen(
     exerciseType: ExerciseType,
     onCalibrationComplete: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: CalibrationViewModel = hiltViewModel(),
 ) {
@@ -86,9 +90,10 @@ fun CalibrationScreen(
 
     CalibrationContent(
         uiState = uiState,
-        onFinishClicked = viewModel::onFinishClicked,
+        onStartClicked = viewModel::onStartClicked,
         onTryAgainClicked = viewModel::onTryAgainClicked,
-        onSkipClicked = onCalibrationComplete,
+        onContinueWithoutClicked = onCalibrationComplete,
+        onBack = onBack,
         modifier = modifier,
     )
 }
@@ -96,36 +101,36 @@ fun CalibrationScreen(
 @Composable
 private fun CalibrationContent(
     uiState: CalibrationUiState,
-    onFinishClicked: () -> Unit,
+    onStartClicked: () -> Unit,
     onTryAgainClicked: () -> Unit,
-    onSkipClicked: () -> Unit,
+    onContinueWithoutClicked: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // At this level, not inside the per-state branches below, so the beat runs unbroken from the
+    // countdown into the capture: the user needs to have found it before rep one, and the
+    // detector is only validated at that pace.
+    val metronomeOn =
+        when (uiState) {
+            is CalibrationUiState.CountingDown -> uiState.exerciseType == ExerciseType.JUMPING_JACK
+            is CalibrationUiState.Capturing -> uiState.exerciseType == ExerciseType.JUMPING_JACK
+            else -> false
+        }
+    if (metronomeOn) {
+        MetronomeEffect()
+    }
+
     when (uiState) {
-        is CalibrationUiState.Recording ->
-            if (uiState.exerciseType == ExerciseType.JUMPING_JACK) {
-                JumpingJackRecordingContent(
-                    repsCompleted = uiState.repsCompleted,
-                    onFinishClicked = onFinishClicked,
-                    onSkipClicked = onSkipClicked,
-                    modifier = modifier,
-                )
-            } else {
-                RecordingContent(
-                    exerciseType = uiState.exerciseType,
-                    repsCompleted = uiState.repsCompleted,
-                    onFinishClicked = onFinishClicked,
-                    onSkipClicked = onSkipClicked,
-                    modifier = modifier,
-                )
-            }
+        is CalibrationUiState.Ready ->
+            ReadyContent(uiState.exerciseType, onStartClicked, onContinueWithoutClicked, modifier)
+        is CalibrationUiState.CountingDown ->
+            CountingDownContent(uiState, onContinueWithoutClicked, modifier)
+        is CalibrationUiState.Capturing ->
+            CapturingContent(uiState, onContinueWithoutClicked, modifier)
         is CalibrationUiState.Rejected ->
-            RejectedContent(
-                reason = uiState.reason,
-                onTryAgainClicked = onTryAgainClicked,
-                onSkipClicked = onSkipClicked,
-                modifier = modifier,
-            )
+            RejectedContent(uiState.reason, onTryAgainClicked, onContinueWithoutClicked, modifier)
+        is CalibrationUiState.Unsupported ->
+            UnsupportedContent(uiState.exerciseType, onBack, modifier)
         // Nothing to show: CalibrationScreen's LaunchedEffect(uiState) navigates away the moment
         // this is reached. An empty themed surface avoids a one-frame flash of the prior state
         // while that navigation is still in flight.
@@ -135,141 +140,104 @@ private fun CalibrationContent(
 }
 
 @Composable
-private fun RecordingContent(
+private fun ReadyContent(
     exerciseType: ExerciseType,
-    repsCompleted: Int,
-    onFinishClicked: () -> Unit,
-    onSkipClicked: () -> Unit,
+    onStartClicked: () -> Unit,
+    onContinueWithoutClicked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     CalibrationScaffold(
-        titleBlock = {
-            Text(
-                text = "Quick calibration",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Everyone moves differently. Do 5 normal ${exerciseType.pluralLowerLabel()} " +
-                    "so RepMate can learn your movement.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        },
-        repsCompleted = repsCompleted,
-        statusText = "${exerciseType.pluralLowerLabel().replaceFirstChar { it.uppercase() }} now, " +
-            "we're recording rep ${(repsCompleted + 1).coerceAtMost(CalibrationProfile.REQUIRED_SAMPLES)} " +
-            "of ${CalibrationProfile.REQUIRED_SAMPLES}",
-        onFinishClicked = onFinishClicked,
-        onSkipClicked = onSkipClicked,
         modifier = modifier,
-    )
+        actions = {
+            RepMateButton(text = "Start", onClick = onStartClicked)
+            Spacer(modifier = Modifier.height(4.dp))
+            ContinueWithoutLink(onClick = onContinueWithoutClicked)
+        },
+    ) {
+        Title("Quick calibration")
+        Spacer(modifier = Modifier.height(8.dp))
+        Body(
+            "Do 5 ${exerciseType.pluralLowerLabel()} exactly as you would in a real workout: " +
+                "same speed, same depth.",
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        // The single most important instruction on this screen. Calibration reps performed
+        // slowly and deeply "for the test" measured ~5x stronger than the same person's real
+        // set, which left the profile tuned to reps they never do again.
+        CalibrationStatusBox(
+            text = "Don't slow down or go deeper than usual. RepMate learns from these reps, so " +
+                "exaggerated ones make it miss your real ones.",
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Body(
+            if (exerciseType == ExerciseType.JUMPING_JACK) {
+                "Tap Start and put your phone in your front pocket. A beat will play: do one full " +
+                    "jack (out and back) per beep, starting when the countdown ends."
+            } else {
+                "Tap Start, put your phone in your front pocket, and begin when the countdown ends."
+            },
+        )
+    }
 }
 
-/**
- * Same shape as [RecordingContent], plus a pulsing beat ring and a real audible beat for pacing
- * -- see [JumpingJackMetronome] for the audio itself, and [BeatPulseIndicator] for why the two
- * stay in sync.
- */
 @Composable
-private fun JumpingJackRecordingContent(
-    repsCompleted: Int,
-    onFinishClicked: () -> Unit,
-    onSkipClicked: () -> Unit,
+private fun CountingDownContent(
+    uiState: CalibrationUiState.CountingDown,
+    onContinueWithoutClicked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val inPreview = LocalInspectionMode.current
-
-    // Started once this content enters composition, released the moment it leaves -- whether
-    // because calibration finished, was skipped (both swap CalibrationContent to a different
-    // branch), or the user backed out of the screen entirely. Skipped in Compose Preview: a
-    // preview render has no reason to write a cache file and open a SoundPool.
-    DisposableEffect(Unit) {
-        if (inPreview) return@DisposableEffect onDispose {}
-        val metronome = JumpingJackMetronome(context)
-        metronome.start()
-        onDispose { metronome.release() }
-    }
-
     CalibrationScaffold(
-        titleBlock = {
-            Text(
-                text = "Quick calibration",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Jumping jacks need a steady beat to count accurately. Follow the pulse, " +
-                    "one full jack (out and back) per beat.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(24.dp))
+        modifier = modifier,
+        actions = { ContinueWithoutLink(onClick = onContinueWithoutClicked) },
+    ) {
+        Body("Phone in your front pocket")
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = uiState.secondsLeft.toString(),
+            style = MaterialTheme.typography.displayLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        if (uiState.exerciseType == ExerciseType.JUMPING_JACK) {
+            Spacer(modifier = Modifier.height(16.dp))
             BeatPulseIndicator()
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${JumpingJackRepDetector.TARGET_BPM} BPM, one beep per full jack",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        repsCompleted = repsCompleted,
-        statusText = "Jumping jacks now, we're recording rep " +
-            "${(repsCompleted + 1).coerceAtMost(CalibrationProfile.REQUIRED_SAMPLES)} of ${CalibrationProfile.REQUIRED_SAMPLES}",
-        onFinishClicked = onFinishClicked,
-        onSkipClicked = onSkipClicked,
-        modifier = modifier,
-    )
+            Body("Find the beat: one full jack per beep")
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        RepIndicatorRow(repsCompleted = 0)
+    }
 }
 
-/**
- * The Recording layout every exercise shares: a centered title/body block (with room for extra
- * content, e.g. jumping jack's beat ring, via [titleBlock]), the 5-dot progress row, the status
- * box, and the pinned Finish/Skip actions at the bottom.
- */
 @Composable
-private fun CalibrationScaffold(
-    titleBlock: @Composable () -> Unit,
-    repsCompleted: Int,
-    statusText: String,
-    onFinishClicked: () -> Unit,
-    onSkipClicked: () -> Unit,
+private fun CapturingContent(
+    uiState: CalibrationUiState.Capturing,
+    onContinueWithoutClicked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+    val required = CalibrationProfile.REQUIRED_SAMPLES
+    CalibrationScaffold(
+        modifier = modifier,
+        actions = { ContinueWithoutLink(onClick = onContinueWithoutClicked) },
     ) {
-        Column(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            titleBlock()
-            Spacer(modifier = Modifier.height(24.dp))
-            RepIndicatorRow(repsCompleted = repsCompleted)
-            Spacer(modifier = Modifier.height(24.dp))
-            CalibrationStatusBox(text = statusText)
+        Title("Go: ${uiState.exerciseType.pluralLowerLabel()} at your normal pace")
+        if (uiState.exerciseType == ExerciseType.JUMPING_JACK) {
+            Spacer(modifier = Modifier.height(16.dp))
+            BeatPulseIndicator()
+            Spacer(modifier = Modifier.height(8.dp))
+            Body("${JumpingJackRepDetector.TARGET_BPM} BPM, one full jack per beep")
         }
-
-        val remaining = (CalibrationProfile.REQUIRED_SAMPLES - repsCompleted).coerceAtLeast(0)
-        RepMateButton(
-            text = if (remaining > 0) "Finish ($remaining more to go)" else "Finish",
-            onClick = onFinishClicked,
-            enabled = remaining <= 0,
+        Spacer(modifier = Modifier.height(24.dp))
+        RepIndicatorRow(repsCompleted = uiState.repsCompleted)
+        Spacer(modifier = Modifier.height(24.dp))
+        CalibrationStatusBox(
+            text =
+                when {
+                    uiState.showNoRepHint -> uiState.exerciseType.noRepHint()
+                    uiState.isMoving -> "Movement detected…"
+                    uiState.repsCompleted == 0 -> "Waiting for rep 1 of $required"
+                    else -> "${uiState.repsCompleted} of $required counted, keep going"
+                },
         )
-        Spacer(modifier = Modifier.height(4.dp))
-        SkipLink(onClick = onSkipClicked)
     }
 }
 
@@ -277,8 +245,59 @@ private fun CalibrationScaffold(
 private fun RejectedContent(
     reason: CalibrationOutcome.Reason,
     onTryAgainClicked: () -> Unit,
-    onSkipClicked: () -> Unit,
+    onContinueWithoutClicked: () -> Unit,
     modifier: Modifier = Modifier,
+) {
+    CalibrationScaffold(
+        modifier = modifier,
+        actions = {
+            RepMateButton(text = "Try again", onClick = onTryAgainClicked)
+            Spacer(modifier = Modifier.height(4.dp))
+            ContinueWithoutLink(onClick = onContinueWithoutClicked)
+        },
+    ) {
+        Icon(
+            imageVector = Icons.Filled.WarningAmber,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(48.dp),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Title("Let's try that again")
+        Spacer(modifier = Modifier.height(8.dp))
+        // Plain language derived from the reason, not the technical enum name or the engine's
+        // own log-oriented `detail` string (which CalibrationViewModel logs instead).
+        Body(reason.toUserMessage())
+        Spacer(modifier = Modifier.height(8.dp))
+        Body("Nothing was saved.")
+    }
+}
+
+@Composable
+private fun UnsupportedContent(
+    exerciseType: ExerciseType,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    CalibrationScaffold(
+        modifier = modifier,
+        actions = { RepMateButton(text = "Back", onClick = onBack) },
+    ) {
+        Title("${exerciseType.pluralLowerLabel().replaceFirstChar { it.uppercase() }} aren't available yet")
+        Spacer(modifier = Modifier.height(8.dp))
+        Body(
+            "RepMate can't detect ${exerciseType.pluralLowerLabel()} from your phone's sensors yet, " +
+                "so there's nothing to calibrate. Squats and jumping jacks are ready to go.",
+        )
+    }
+}
+
+/** Centered content above bottom-pinned [actions] -- the layout every calibration state shares. */
+@Composable
+private fun CalibrationScaffold(
+    actions: @Composable ColumnScope.() -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier =
@@ -291,44 +310,46 @@ private fun RejectedContent(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.WarningAmber,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(48.dp),
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Let's try that again",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                // Plain language derived from the reason, not the technical enum name or the
-                // engine's own log-oriented `detail` string -- see CalibrationUiState.Rejected.
-                text = reason.toUserMessage(),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-
-        RepMateButton(text = "Try again", onClick = onTryAgainClicked)
-        Spacer(modifier = Modifier.height(4.dp))
-        SkipLink(onClick = onSkipClicked)
+            content = content,
+        )
+        actions()
     }
+}
+
+@Composable
+private fun Title(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.headlineSmall,
+        color = MaterialTheme.colorScheme.onBackground,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun Body(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
 }
 
 private fun CalibrationOutcome.Reason.toUserMessage(): String =
     when (this) {
-        CalibrationOutcome.Reason.TOO_FEW_SAMPLES -> "We didn't catch enough reps, let's try again."
-        CalibrationOutcome.Reason.UNUSABLE_TIMING -> "Something interrupted that capture, let's try again."
-        CalibrationOutcome.Reason.AMPLITUDE_INCONSISTENT,
-        CalibrationOutcome.Reason.DURATION_INCONSISTENT,
-        -> "Those five reps looked pretty different from each other, try to keep a steady, even pace."
+        CalibrationOutcome.Reason.TOO_FEW_SAMPLES -> "We didn't catch enough reps."
+        CalibrationOutcome.Reason.UNUSABLE_TIMING -> "Something interrupted that capture."
+        CalibrationOutcome.Reason.AMPLITUDE_INCONSISTENT ->
+            "Those five reps varied too much in depth. Do them the way you'd do a real set, the same each time."
+        CalibrationOutcome.Reason.DURATION_INCONSISTENT ->
+            "Those five reps varied too much in speed. Do them the way you'd do a real set, the same each time."
+    }
+
+private fun ExerciseType.noRepHint(): String =
+    when (this) {
+        ExerciseType.JUMPING_JACK -> "No reps yet. Keep your phone in your front pocket and jump in time with the beep."
+        else -> "No reps yet. Keep your phone in your front pocket and move at your normal pace."
     }
 
 private enum class RepIndicatorState { Completed, Current, Upcoming }
@@ -401,6 +422,22 @@ private fun CalibrationStatusBox(
 }
 
 /**
+ * Plays the jumping-jack beat for as long as it stays in composition. Skipped in Compose Preview:
+ * a preview render has no reason to write a cache file and open a SoundPool.
+ */
+@Composable
+private fun MetronomeEffect() {
+    val context = LocalContext.current
+    val inPreview = LocalInspectionMode.current
+    DisposableEffect(Unit) {
+        if (inPreview) return@DisposableEffect onDispose {}
+        val metronome = JumpingJackMetronome(context)
+        metronome.start()
+        onDispose { metronome.release() }
+    }
+}
+
+/**
  * The visual half of the beat -- see [JumpingJackMetronome] for the audible half. Both read
  * [JumpingJackRepDetector.TARGET_BPM] directly rather than each hardcoding their own copy of the
  * BPM figure, which is what keeps them in sync by construction.
@@ -437,13 +474,13 @@ private fun BeatPulseIndicator(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SkipLink(
+private fun ContinueWithoutLink(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     TextButton(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Text(
-            text = "Skip for now (use default sensitivity)",
+            text = "Continue without calibrating (default sensitivity)",
             style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -457,80 +494,54 @@ private fun ExerciseType.pluralLowerLabel(): String =
         ExerciseType.JUMPING_JACK -> "jumping jacks"
     }
 
-@Preview(name = "Recording - Light", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
-private fun CalibrationRecordingLightPreview() {
-    RepMateTheme(darkTheme = false) {
+private fun PreviewOf(
+    uiState: CalibrationUiState,
+    darkTheme: Boolean,
+) {
+    RepMateTheme(darkTheme = darkTheme) {
         CalibrationContent(
-            uiState = CalibrationUiState.Recording(ExerciseType.SQUAT, repsCompleted = 2),
-            onFinishClicked = {},
+            uiState = uiState,
+            onStartClicked = {},
             onTryAgainClicked = {},
-            onSkipClicked = {},
+            onContinueWithoutClicked = {},
+            onBack = {},
         )
     }
 }
 
-@Preview(name = "Recording - Dark", showBackground = true, widthDp = 360, heightDp = 780)
+@Preview(name = "Ready - Light", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
-private fun CalibrationRecordingDarkPreview() {
-    RepMateTheme(darkTheme = true) {
-        CalibrationContent(
-            uiState = CalibrationUiState.Recording(ExerciseType.SQUAT, repsCompleted = 5),
-            onFinishClicked = {},
-            onTryAgainClicked = {},
-            onSkipClicked = {},
-        )
-    }
-}
+private fun CalibrationReadyLightPreview() = PreviewOf(CalibrationUiState.Ready(ExerciseType.SQUAT), darkTheme = false)
 
-@Preview(name = "Jumping jack - Light", showBackground = true, widthDp = 360, heightDp = 820)
+@Preview(name = "Counting down - Jumping jack - Dark", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
-private fun CalibrationJumpingJackLightPreview() {
-    RepMateTheme(darkTheme = false) {
-        CalibrationContent(
-            uiState = CalibrationUiState.Recording(ExerciseType.JUMPING_JACK, repsCompleted = 3),
-            onFinishClicked = {},
-            onTryAgainClicked = {},
-            onSkipClicked = {},
-        )
-    }
-}
+private fun CalibrationCountingDownDarkPreview() =
+    PreviewOf(CalibrationUiState.CountingDown(ExerciseType.JUMPING_JACK, secondsLeft = 3), darkTheme = true)
 
-@Preview(name = "Jumping jack - Dark", showBackground = true, widthDp = 360, heightDp = 820)
+@Preview(name = "Capturing - moving - Light", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
-private fun CalibrationJumpingJackDarkPreview() {
-    RepMateTheme(darkTheme = true) {
-        CalibrationContent(
-            uiState = CalibrationUiState.Recording(ExerciseType.JUMPING_JACK, repsCompleted = 3),
-            onFinishClicked = {},
-            onTryAgainClicked = {},
-            onSkipClicked = {},
-        )
-    }
-}
+private fun CalibrationCapturingLightPreview() =
+    PreviewOf(CalibrationUiState.Capturing(ExerciseType.SQUAT, repsCompleted = 2, isMoving = true), darkTheme = false)
 
-@Preview(name = "Rejected - Inconsistent - Light", showBackground = true, widthDp = 360, heightDp = 780)
+@Preview(name = "Capturing - no-rep hint - Dark", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
-private fun CalibrationRejectedInconsistentLightPreview() {
-    RepMateTheme(darkTheme = false) {
-        CalibrationContent(
-            uiState = CalibrationUiState.Rejected(CalibrationOutcome.Reason.AMPLITUDE_INCONSISTENT, "amplitudes span 3.4x"),
-            onFinishClicked = {},
-            onTryAgainClicked = {},
-            onSkipClicked = {},
-        )
-    }
-}
+private fun CalibrationCapturingHintDarkPreview() =
+    PreviewOf(CalibrationUiState.Capturing(ExerciseType.SQUAT, repsCompleted = 0, showNoRepHint = true), darkTheme = true)
 
-@Preview(name = "Rejected - Too few - Dark", showBackground = true, widthDp = 360, heightDp = 780)
+@Preview(name = "Capturing - Jumping jack - Light", showBackground = true, widthDp = 360, heightDp = 820)
 @Composable
-private fun CalibrationRejectedTooFewDarkPreview() {
-    RepMateTheme(darkTheme = true) {
-        CalibrationContent(
-            uiState = CalibrationUiState.Rejected(CalibrationOutcome.Reason.TOO_FEW_SAMPLES, "got 3 usable reps, need 5"),
-            onFinishClicked = {},
-            onTryAgainClicked = {},
-            onSkipClicked = {},
-        )
-    }
-}
+private fun CalibrationCapturingJumpingJackPreview() =
+    PreviewOf(CalibrationUiState.Capturing(ExerciseType.JUMPING_JACK, repsCompleted = 3), darkTheme = false)
+
+@Preview(name = "Rejected - Light", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun CalibrationRejectedLightPreview() =
+    PreviewOf(
+        CalibrationUiState.Rejected(ExerciseType.SQUAT, CalibrationOutcome.Reason.AMPLITUDE_INCONSISTENT, "amplitudes span 3.4x"),
+        darkTheme = false,
+    )
+
+@Preview(name = "Unsupported - Push-up - Dark", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun CalibrationUnsupportedDarkPreview() = PreviewOf(CalibrationUiState.Unsupported(ExerciseType.PUSHUP), darkTheme = true)
