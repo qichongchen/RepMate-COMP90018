@@ -4,16 +4,17 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.repmate.data.RepMateDatabase
+import com.example.repmate.data.auth.AuthRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.Assert.assertEquals
 
 @RunWith(AndroidJUnit4::class)
 class RoomSessionRepositoryTest {
@@ -29,7 +30,8 @@ class RoomSessionRepositoryTest {
         ).build()
 
         repository = RoomSessionRepository(
-            database.sessionDao()
+            sessionDao = database.sessionDao(),
+            authRepository = FakeAuthRepository()
         )
     }
 
@@ -134,5 +136,16 @@ class RoomSessionRepositoryTest {
         assertEquals(1, result.size)
         assertEquals(9.0f, result[0].reps[0].score)
         assertEquals(listOf("updated"), result[0].reps[0].reasons)
+    }
+
+    private class FakeAuthRepository : AuthRepository {
+
+        override suspend fun signInAnonymously(): Result<String> {
+            return Result.success("test-user")
+        }
+
+        override fun getCurrentUserId(): String? {
+            return "test-user"
+        }
     }
 }

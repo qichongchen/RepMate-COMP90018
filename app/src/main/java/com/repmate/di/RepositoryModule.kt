@@ -9,6 +9,8 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import com.repmate.data.cloud.FirestoreLeaderboardRepository
+import com.repmate.data.repo.LeaderboardRepository
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -25,4 +27,10 @@ abstract class RepositoryModule {
     abstract fun bindCalibrationRepository(
         implementation: RoomCalibrationRepository
     ): CalibrationRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLeaderboardRepository(
+        implementation: FirestoreLeaderboardRepository
+    ): LeaderboardRepository
 }

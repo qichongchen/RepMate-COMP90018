@@ -32,6 +32,7 @@ import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
 import com.repmate.ui.home.CalibrationGateViewModel
 import com.repmate.ui.home.HomeScreen
+import com.repmate.ui.leaderboard.LeaderboardScreen
 import com.repmate.ui.onboarding.OnboardingGateViewModel
 import com.repmate.ui.onboarding.OnboardingScreen
 import com.repmate.ui.motionreplay.MotionReplayScreen
@@ -312,7 +313,7 @@ fun RepMateNavGraph(
                 )
             }
             composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
-            composable(RepMateDestinations.LEADERBOARD) { PlaceholderScreen(RepMateDestinations.LEADERBOARD) }
+            composable(RepMateDestinations.LEADERBOARD) { LeaderboardScreen()}
             composable(RepMateDestinations.PROFILE) {
                 // Local to this destination, not hoisted to RepMateNavGraph level like
                 // onboardingGateViewModel/calibrationGateViewModel above -- nothing outside this one
