@@ -18,6 +18,7 @@ data class CalibrationProfileEntity(
 
     val sampleCount: Int,
     val softestSampleAmplitude: Float,
+    val loudestSampleAmplitude: Float,
     val shortestSampleMs: Long,
     val longestSampleMs: Long,
     val fastestSampleGapMs: Long,

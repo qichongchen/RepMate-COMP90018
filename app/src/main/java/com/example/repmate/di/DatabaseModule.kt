@@ -12,6 +12,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import com.example.repmate.data.MIGRATION_2_3
+import com.example.repmate.data.MIGRATION_3_4
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -27,7 +28,10 @@ object DatabaseModule {
             RepMateDatabase::class.java,
             "repmate_database"
         )
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(
+                MIGRATION_2_3,
+                MIGRATION_3_4
+            )
             .build()
     }
 
