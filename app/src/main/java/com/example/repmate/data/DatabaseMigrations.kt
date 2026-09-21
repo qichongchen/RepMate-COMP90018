@@ -12,12 +12,8 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
 
-        // Clean up the old test table if a device reached v3
-        // through an older broken migration.
         db.execSQL("DROP TABLE IF EXISTS test_items")
 
-        // Official schema v3 does not have ownerId.
-        // Some development builds may already have it, so only add it if missing.
         if (!columnExists(db, "workout_sessions", "ownerId")) {
             db.execSQL(
                 """
@@ -27,7 +23,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
             )
         }
 
-        // Official schema v3 does not have calibration_profiles.
         if (!tableExists(db, "calibration_profiles")) {
             db.execSQL(
                 """
@@ -55,8 +50,7 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 "loudestSampleAmplitude"
             )
         ) {
-            // Some development v3 databases already have calibration_profiles
-            // but do not have loudestSampleAmplitude.
+
             db.execSQL(
                 """
                 ALTER TABLE calibration_profiles
