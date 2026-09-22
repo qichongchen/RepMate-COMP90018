@@ -55,4 +55,63 @@ class MotionReplayMapperTest {
         assertEquals(1, rep.repIndex)
         assertEquals(1f, rep.tempoSeconds, 0.001f)
     }
+
+    @Test
+    fun `calibrationBand shifts the profile's softest-loudest range onto this rep's own curve minimum`() {
+        val profile = CalibrationProfile(
+            minAmplitude = 1f,
+            minRepDurationMs = 600L,
+            maxRepDurationMs = 1800L,
+            cooldownMs = 300L,
+            sampleCount = 5,
+            softestSampleAmplitude = 1.0f,
+            loudestSampleAmplitude = 3.0f,
+            shortestSampleMs = 700L,
+            longestSampleMs = 1200L,
+            fastestSampleGapMs = 200L,
+            notes = emptyList()
+        )
+
+        val band = calibrationBand(profile, repMinMagnitude = 5.0f)
+
+        assertEquals(6.0f, band.start, 0.001f)
+        assertEquals(8.0f, band.endInclusive, 0.001f)
+    }
+
+    @Test
+    fun `toMotionReplayUiState maps a calibrated rep with a real calibration band`() {
+        val profile = CalibrationProfile(
+            minAmplitude = 1f,
+            minRepDurationMs = 600L,
+            maxRepDurationMs = 1800L,
+            cooldownMs = 300L,
+            sampleCount = 5,
+            softestSampleAmplitude = 1.0f,
+            loudestSampleAmplitude = 3.0f,
+            shortestSampleMs = 700L,
+            longestSampleMs = 1200L,
+            fastestSampleGapMs = 200L,
+            notes = emptyList()
+        )
+        val event = RepEvent(index = 0, startMs = 0L, endMs = 1000L, amplitude = 2.3f)
+        val score = RepScore(
+            repIndex = 0,
+            score = 8.5f,
+            tempoSeconds = 1f,
+            rangePercent = 92,
+            pauseSeconds = 0f,
+            reasons = listOf("good depth")
+        )
+        val curve = listOf(SmoothedSample(0L, 9.8f), SmoothedSample(1000L, 10.9f))
+        val session = WorkoutSession(id = "s1", exercise = ExerciseType.SQUAT, startedAt = 0L, reps = listOf(score))
+        val replayed = ReplayedSession(session, listOf(ReplayedRep(event, score, curve)))
+
+        val uiState = replayed.toMotionReplayUiState(profile = profile)
+
+        val rep = uiState.reps.single()
+        assertTrue(rep is MotionReplayRepUi.Calibrated)
+        rep as MotionReplayRepUi.Calibrated
+        assertEquals(9.8f + 1.0f, rep.calibrationBand.start, 0.001f)
+        assertEquals(9.8f + 3.0f, rep.calibrationBand.endInclusive, 0.001f)
+    }
 }

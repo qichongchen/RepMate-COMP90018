@@ -2,6 +2,7 @@ package com.repmate.ui.motionreplay
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.repmate.data.repo.CalibrationRepository
 import com.repmate.data.repo.SessionRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
@@ -46,98 +47,94 @@ data class MotionReplayScreenState(
  * a bug. Nothing here needs to change once frame capture lands: [buildScreenState] already takes
  * the `frames != null` branch whenever it's true.
  *
- * ## Why `profile = null` is hardcoded in [buildScreenState]
- * `calibrationBand()` in `MotionReplayUiModels.kt` is a `TODO()` stub -- [CalibrationProfile] has
- * no upper-bound amplitude field yet (tracker 32.4/33.2, blocked on a field request to Mohit).
- * Calling [ReplayedSession.toMotionReplayUiState] with a non-null profile crashes the moment it
- * reaches a rep whose `rangePercent` is measurable, because that is exactly the branch that calls
- * `calibrationBand()`. So `profile = null` is passed to both [SessionReplayer.replay] and
- * [ReplayedSession.toMotionReplayUiState] unconditionally below, regardless of whether the
- * session's exercise actually has a saved [CalibrationProfile] -- every rep renders through
- * [MotionReplayRepUi.Uncalibrated] for now, which is expected and intentional. This is a one-line
- * change once tracker 32.4/33.2 lands: look up the real profile (e.g. via [CalibrationRepository])
- * and pass it through both calls instead of `null`.
+ * ## Calibration profile lookup in [buildScreenState]
+ * Now that `calibrationBand()` in `MotionReplayUiModels.kt` is a real implementation (PR #21
+ * landed the missing [com.repmate.engine.CalibrationProfile.loudestSampleAmplitude] field), this
+ * looks up the session's real profile via [CalibrationRepository] -- the same interface
+ * `LiveWorkoutViewModel` already depends on -- and passes it through to both
+ * [SessionReplayer.replay] and `toMotionReplayUiState`. A `null` result (exercise never
+ * calibrated) is not an error: every rep still renders, just through
+ * [MotionReplayRepUi.Uncalibrated] instead of [MotionReplayRepUi.Calibrated].
  */
 @HiltViewModel
 class MotionReplayViewModel
-    @Inject
-    constructor(
-        private val sessionRepository: SessionRepository,
-    ) : ViewModel() {
-        private val _screenState = MutableStateFlow(MotionReplayScreenState())
-        val screenState: StateFlow<MotionReplayScreenState> = _screenState.asStateFlow()
+@Inject
+constructor(
+    private val sessionRepository: SessionRepository,
+    private val calibrationRepository: CalibrationRepository,
+) : ViewModel() {
+    private val _screenState = MutableStateFlow(MotionReplayScreenState())
+    val screenState: StateFlow<MotionReplayScreenState> = _screenState.asStateFlow()
 
-        // Same "applied once, from whatever the nav route parsed" pattern as
-        // LiveWorkoutViewModel.onExerciseType / CalibrationViewModel.onExerciseType.
-        private var initializedSessionId: String? = null
+    // Same "applied once, from whatever the nav route parsed" pattern as
+    // LiveWorkoutViewModel.onExerciseType / CalibrationViewModel.onExerciseType.
+    private var initializedSessionId: String? = null
 
-        /** Called once by [MotionReplayScreen] with the real session id parsed from the nav route. */
-        fun onSessionId(sessionId: String) {
-            if (initializedSessionId != null) return
-            initializedSessionId = sessionId
+    /** Called once by [MotionReplayScreen] with the real session id parsed from the nav route. */
+    fun onSessionId(sessionId: String) {
+        if (initializedSessionId != null) return
+        initializedSessionId = sessionId
 
-            viewModelScope.launch {
-                val session = sessionRepository.getById(sessionId)
-                _screenState.value = session?.let { buildScreenState(it) } ?: notFoundScreenState(sessionId)
-            }
+        viewModelScope.launch {
+            val session = sessionRepository.getById(sessionId)
+            _screenState.value = session?.let { buildScreenState(it) } ?: notFoundScreenState(sessionId)
         }
-
-        private fun buildScreenState(session: WorkoutSession): MotionReplayScreenState {
-            val frames = session.frames ?: return noReplayDataState(session)
-
-            // TODO(tracker 32.4/33.2): pass the real CalibrationProfile through both calls below
-            // once calibrationBand() in MotionReplayUiModels.kt is no longer a TODO() stub -- see
-            // this class's own KDoc for why `null` is hardcoded here.
-            val replayed = SessionReplayer().replay(session, profile = null)
-            return replayed?.toMotionReplayUiState(profile = null)?.let { MotionReplayScreenState(uiState = it) }
-                ?: noReplayDataState(session)
-        }
-
-        private fun noReplayDataState(session: WorkoutSession) =
-            MotionReplayScreenState(
-                uiState =
-                    MotionReplayUiState(
-                        sessionId = session.id,
-                        exercise = session.exercise,
-                        reps = emptyList(),
-                        currentIndex = 0,
-                        isReplayAvailable = false,
-                    ),
-                fallbackReps = session.reps,
-            )
-
-        /** [ExerciseType.SQUAT] is an arbitrary, unused default (Golden Rule 7): nothing reads it -- the empty state never shows an exercise name. */
-        private fun notFoundScreenState(sessionId: String) =
-            MotionReplayScreenState(
-                uiState =
-                    MotionReplayUiState(
-                        sessionId = sessionId,
-                        exercise = ExerciseType.SQUAT,
-                        reps = emptyList(),
-                        currentIndex = 0,
-                        isReplayAvailable = false,
-                    ),
-                fallbackReps = emptyList(),
-            )
-
-        fun onPrevRepClicked() {
-            _screenState.update { state -> state.withCurrentIndex((currentIndexOf(state) - 1).coerceAtLeast(0)) }
-        }
-
-        fun onNextRepClicked() {
-            _screenState.update { state ->
-                val maxIndex = (totalRepsOf(state) - 1).coerceAtLeast(0)
-                state.withCurrentIndex((currentIndexOf(state) + 1).coerceAtMost(maxIndex))
-            }
-        }
-
-        private fun currentIndexOf(state: MotionReplayScreenState) = state.uiState?.currentIndex ?: 0
-
-        private fun totalRepsOf(state: MotionReplayScreenState): Int {
-            val uiState = state.uiState ?: return 0
-            return if (uiState.isReplayAvailable) uiState.reps.size else state.fallbackReps.size
-        }
-
-        private fun MotionReplayScreenState.withCurrentIndex(index: Int): MotionReplayScreenState =
-            uiState?.let { copy(uiState = it.copy(currentIndex = index)) } ?: this
     }
+
+    private suspend fun buildScreenState(session: WorkoutSession): MotionReplayScreenState {
+        session.frames ?: return noReplayDataState(session)
+
+        val profile = calibrationRepository.getProfile(session.exercise)
+        val replayed = SessionReplayer().replay(session, profile = profile)
+        return replayed?.toMotionReplayUiState(profile = profile)?.let { MotionReplayScreenState(uiState = it) }
+            ?: noReplayDataState(session)
+    }
+
+    private fun noReplayDataState(session: WorkoutSession) =
+        MotionReplayScreenState(
+            uiState =
+                MotionReplayUiState(
+                    sessionId = session.id,
+                    exercise = session.exercise,
+                    reps = emptyList(),
+                    currentIndex = 0,
+                    isReplayAvailable = false,
+                ),
+            fallbackReps = session.reps,
+        )
+
+    /** [ExerciseType.SQUAT] is an arbitrary, unused default (Golden Rule 7): nothing reads it -- the empty state never shows an exercise name. */
+    private fun notFoundScreenState(sessionId: String) =
+        MotionReplayScreenState(
+            uiState =
+                MotionReplayUiState(
+                    sessionId = sessionId,
+                    exercise = ExerciseType.SQUAT,
+                    reps = emptyList(),
+                    currentIndex = 0,
+                    isReplayAvailable = false,
+                ),
+            fallbackReps = emptyList(),
+        )
+
+    fun onPrevRepClicked() {
+        _screenState.update { state -> state.withCurrentIndex((currentIndexOf(state) - 1).coerceAtLeast(0)) }
+    }
+
+    fun onNextRepClicked() {
+        _screenState.update { state ->
+            val maxIndex = (totalRepsOf(state) - 1).coerceAtLeast(0)
+            state.withCurrentIndex((currentIndexOf(state) + 1).coerceAtMost(maxIndex))
+        }
+    }
+
+    private fun currentIndexOf(state: MotionReplayScreenState) = state.uiState?.currentIndex ?: 0
+
+    private fun totalRepsOf(state: MotionReplayScreenState): Int {
+        val uiState = state.uiState ?: return 0
+        return if (uiState.isReplayAvailable) uiState.reps.size else state.fallbackReps.size
+    }
+
+    private fun MotionReplayScreenState.withCurrentIndex(index: Int): MotionReplayScreenState =
+        uiState?.let { copy(uiState = it.copy(currentIndex = index)) } ?: this
+}
