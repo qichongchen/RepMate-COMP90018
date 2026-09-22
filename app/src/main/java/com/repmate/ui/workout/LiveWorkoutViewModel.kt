@@ -11,7 +11,6 @@ import com.repmate.engine.ExerciseType
 import com.repmate.engine.FormScorer
 import com.repmate.engine.JumpingJackRepDetector
 import com.repmate.engine.MotionFrame
-import com.repmate.engine.PushupRepDetector
 import com.repmate.engine.RejectionGuard
 import com.repmate.engine.RepEvent
 import com.repmate.engine.RepPhase
@@ -50,8 +49,14 @@ data class LiveWorkoutUiState(
  * [CalibrationProfile] (or `null`, which [FormScorer] already handles), and the score is
  * persisted for real via [SessionRepository] once the workout ends.
  *
- * [ExerciseType.PUSHUP] is the one exception -- see [PushupRepDetector]'s own KDoc for why it's
- * still a fake, and what a real one needs to replace it.
+ * [ExerciseType.PUSHUP] is not reachable through this screen any more: Home now routes it straight
+ * to `com.repmate.ui.workout.pushup.PushupWorkoutScreen`, a camera-driven screen this ViewModel's
+ * IMU-only design (a `Flow<MotionFrame>` in, a `RepEvent` out) can't fit -- push-ups need a pose
+ * angle stream instead, which is what `com.repmate.engine.PushupRepDetector` consumes now. The
+ * branch below is kept only so [bindDetector]'s `when` stays exhaustive against a route this
+ * screen could still be reached by directly (an old deep link, a malformed nav argument); it
+ * degrades to "no reps detected" rather than crashing, same reasoning as `NavGraph.kt`'s own
+ * fallback for a malformed exercise-type argument.
  */
 @HiltViewModel
 class LiveWorkoutViewModel
@@ -138,9 +143,11 @@ class LiveWorkoutViewModel
                     currentPhase = { if (detector.awaitingLanding) RepPhase.DESCENDING else RepPhase.IDLE }
                 }
                 ExerciseType.PUSHUP -> {
-                    val detector = PushupRepDetector()
-                    processFrame = detector::process
-                    currentPhase = { detector.phase }
+                    // Not reachable via Home any more -- see this class's KDoc. Degrades to
+                    // "nothing detected" rather than crashing if this screen is ever reached
+                    // for PUSHUP some other way (e.g. a stale deep link).
+                    processFrame = { null }
+                    currentPhase = { RepPhase.IDLE }
                 }
             }
         }

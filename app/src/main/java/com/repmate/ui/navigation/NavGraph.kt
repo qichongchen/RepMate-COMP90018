@@ -40,6 +40,7 @@ import com.repmate.ui.profile.ProfileScreen
 import com.repmate.ui.profile.RecalibrateExercisePicker
 import com.repmate.ui.theme.RepMateTheme
 import com.repmate.ui.workout.LiveWorkoutScreen
+import com.repmate.ui.workout.pushup.PushupWorkoutScreen
 import kotlinx.coroutines.launch
 
 /**
@@ -84,6 +85,13 @@ object RepMateDestinations {
      */
     const val CALIBRATION = "calibration/{$ARG_EXERCISE_TYPE}/{$ARG_CALIBRATION_ENTRY_POINT}"
     const val LIVE_WORKOUT = "live_workout/{$ARG_EXERCISE_TYPE}"
+
+    /**
+     * No `{exerciseType}` argument, unlike [LIVE_WORKOUT]: this route is push-ups only, so there
+     * is nothing for an argument to select between. See the `PUSHUP` branch of Home's
+     * `onExerciseSelected` below for why push-ups get their own route instead of sharing this one.
+     */
+    const val PUSHUP_WORKOUT = "pushup_workout"
     const val MOTION_REPLAY = "motion_replay/{$ARG_SESSION_ID}"
 
     /**
@@ -293,20 +301,32 @@ fun RepMateNavGraph(
             composable(RepMateDestinations.HOME) {
                 HomeScreen(
                     onExerciseSelected = { exerciseType ->
-                        // Real logic, not a stub: this always resolves to CALIBRATION right now
-                        // only because CalibrationGateViewModel's backing check is itself stubbed
-                        // to always report false (no Room table for calibration profiles yet) --
-                        // see StubCalibrationRepository. The branch itself is real, so a chip tap
-                        // for an already-calibrated exercise correctly goes straight to
-                        // live_workout the moment that stub is replaced with a real query.
-                        coroutineScope.launch {
-                            val destination =
-                                if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
-                                    RepMateDestinations.liveWorkout(exerciseType)
-                                } else {
-                                    RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
-                                }
-                            navController.navigate(destination)
+                        if (exerciseType == ExerciseType.PUSHUP) {
+                            // Push-ups skip the calibration gate entirely and go straight to their
+                            // own camera workout screen -- there is no per-user profile to check
+                            // yet (see CalibrationUiState.Unsupported, still shown if this exercise
+                            // is ever reached through Calibration some other way, e.g. Profile's
+                            // Recalibrate picker), and PUSHUP_WORKOUT isn't parameterised by
+                            // exercise type the way LIVE_WORKOUT is, since it only ever means this
+                            // one exercise.
+                            navController.navigate(RepMateDestinations.PUSHUP_WORKOUT)
+                        } else {
+                            // Real logic, not a stub: this always resolves to CALIBRATION right now
+                            // only because CalibrationGateViewModel's backing check is itself
+                            // stubbed to always report false (no Room table for calibration
+                            // profiles yet) -- see StubCalibrationRepository. The branch itself is
+                            // real, so a chip tap for an already-calibrated exercise correctly goes
+                            // straight to live_workout the moment that stub is replaced with a real
+                            // query.
+                            coroutineScope.launch {
+                                val destination =
+                                    if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
+                                        RepMateDestinations.liveWorkout(exerciseType)
+                                    } else {
+                                        RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
+                                    }
+                                navController.navigate(destination)
+                            }
                         }
                     },
                     onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
@@ -410,6 +430,16 @@ fun RepMateNavGraph(
                     onWorkoutFinished = { sessionId ->
                         navController.navigate(RepMateDestinations.motionReplay(sessionId)) {
                             popUpTo(RepMateDestinations.liveWorkout(exerciseType)) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            composable(RepMateDestinations.PUSHUP_WORKOUT) {
+                PushupWorkoutScreen(
+                    onWorkoutFinished = { sessionId ->
+                        navController.navigate(RepMateDestinations.motionReplay(sessionId)) {
+                            popUpTo(RepMateDestinations.PUSHUP_WORKOUT) { inclusive = true }
                         }
                     },
                 )

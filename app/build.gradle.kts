@@ -131,4 +131,13 @@ dependencies {
     // Per-UID onboarding-shown flag (OnboardingPreferences) -- Preferences DataStore, not
     // Firestore, since this is purely local/on-device state.
     implementation(libs.androidx.datastore.preferences)
+
+    // Push-up camera workout: CameraX preview/analysis pipeline, plus ML Kit's on-device pose
+    // model to find the shoulder/elbow/wrist landmarks com.repmate.pose turns into an angle.
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    // The base (fast) on-device model, bundled into the APK: no network, no API key.
+    implementation(libs.mlkit.pose.detection)
 }
