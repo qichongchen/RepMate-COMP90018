@@ -321,6 +321,13 @@ class SquatRepDetector(
     private var lastRepEndMs: Long? = null
 
     /**
+     * Called whenever a window that opened is discarded, with every guard it failed. Purely
+     * observational: setting it changes nothing about which reps are counted. Called on the
+     * thread that calls [process], so a listener that touches UI state must hop threads itself.
+     */
+    var onRejectedWindow: ((RejectedWindow) -> Unit)? = null
+
+    /**
      * Set when a window is abandoned for running past [maxRepDurationMs], and cleared once
      * the smoothed signal drops back under [lowThreshold]. While it is set no new window may
      * open, so one long burst yields one abandonment rather than a train of them.
@@ -361,6 +368,20 @@ class SquatRepDetector(
                     // Open too long to be a squat: abandon the window rather than wait for a
                     // close that may never come. Checked before the close test, so a window
                     // past the limit can never fall through and be emitted as a rep.
+                    onRejectedWindow?.invoke(
+                        RejectedWindow(
+                            startMs = repStartMs,
+                            endMs = frame.tMillis,
+                            amplitude = maxSmoothed - minSmoothed,
+                            failures = listOf(
+                                GuardFailure(
+                                    RejectionGuard.ABANDONED_TOO_LONG,
+                                    (frame.tMillis - repStartMs).toDouble(),
+                                    maxRepDurationMs.toDouble()
+                                )
+                            )
+                        )
+                    )
                     phase = RepPhase.IDLE
                     awaitingLowCrossing = true
                     resetRepWindow()
@@ -471,14 +492,26 @@ class SquatRepDetector(
      * @return the recorded [RepEvent], or `null` if a guard rejected the window.
      */
     private fun closeRepWindow(endMs: Long): RepEvent? {
-        if (endMs - repStartMs < minRepDurationMs) return null // too brief to be a squat
-
+        val durationMs = endMs - repStartMs
         val amplitude = maxSmoothed - minSmoothed
-        if (amplitude < minAmplitude) return null // too small a swing to be a rep
-
         val previousEnd = lastRepEndMs
-        if (previousEnd != null && repStartMs - previousEnd < cooldownMs) {
-            return null // too soon after the last rep — almost certainly its rebound
+        val gapMs = if (previousEnd != null) repStartMs - previousEnd else null
+
+        // Every guard is evaluated, not just the first to fail, so a rejection report can say
+        // "too short AND too small" rather than hiding the second reason behind the first.
+        val failures = ArrayList<GuardFailure>(0)
+        if (durationMs < minRepDurationMs) { // too brief to be a squat
+            failures += GuardFailure(RejectionGuard.TOO_SHORT, durationMs.toDouble(), minRepDurationMs.toDouble())
+        }
+        if (amplitude < minAmplitude) { // too small a swing to be a rep
+            failures += GuardFailure(RejectionGuard.TOO_SMALL, amplitude.toDouble(), minAmplitude.toDouble())
+        }
+        if (gapMs != null && gapMs < cooldownMs) { // too soon after the last rep: its rebound
+            failures += GuardFailure(RejectionGuard.TOO_SOON_AFTER_LAST_REP, gapMs.toDouble(), cooldownMs.toDouble())
+        }
+        if (failures.isNotEmpty()) {
+            onRejectedWindow?.invoke(RejectedWindow(repStartMs, endMs, amplitude, failures))
+            return null
         }
 
         val event = RepEvent(
@@ -504,6 +537,49 @@ class SquatRepDetector(
     }
 
     companion object {
+        /**
+         * The detector a calibration set is captured with: the tuned defaults, with the
+         * duration floor lowered to [CalibrationProfile.MIN_REP_DURATION_FLOOR_MS] and every
+         * other guard left alone.
+         *
+         * ## The bootstrap problem
+         * A profile is derived from reps a detector has already accepted, so capturing with
+         * the defaults means calibration can only learn from reps the defaults count. For
+         * duration that is exactly the wrong way round: live reps of 300-420 ms were dropped
+         * by the 550 ms floor, and a user who squats that fast would calibrate with those
+         * reps missing — the profile could never learn the pace it exists to accommodate.
+         * The capture floor is the lowest floor a profile is allowed to derive, so capture
+         * never rejects a rep on duration that the resulting profile would accept.
+         *
+         * ## Why only duration is loosened
+         * Each other guard was checked against the four recorded squat traces, and each one
+         * is rejecting something real that would otherwise land in the calibration set:
+         *
+         * - **[minAmplitude] stays at 0.94.** Hit's in-set wobble swings 0.83 and handling
+         *   bursts 0.86; the softest genuine rep in the library is 1.03, so the default loses
+         *   no known rep. Lowering it admits the wobble, and [CalibrationProfile]'s
+         *   consistency gate is too wide to reject a set polluted that way.
+         * - **[cooldownMs] stays at 500 ms.** Lisa's reps are followed by rebounds starting
+         *   372-401 ms after the rep ends, lasting 281-382 ms and swinging up to 2.03 —
+         *   long and strong enough to pass every other capture guard. At a 200 ms cooldown
+         *   both count, her set reads 12, and her first five are rejected on amplitude
+         *   spread. No live miss has been traced to the cooldown.
+         * - **[maxRepDurationMs] stays at 3000 ms**, the no-stuck-window guard; it is not a
+         *   per-user threshold in any sense that capture could be too strict about.
+         * - **The trigger thresholds are not calibrated at all** (see the calibration
+         *   constructor), so a rep too shallow to cross 10.15 cannot be rescued here either.
+         *
+         * Replayed at 0.6x time (reps of 417-514 ms), the fast and pocket sets are counted
+         * 10 of 10 by this detector and 0 and 5 of 10 by the defaults.
+         *
+         * ## What it does not reject
+         * Handling bursts — the phone going into the pocket — are real movement and pass
+         * every guard here, as they do in the defaults. Excluding them is the capture
+         * window's job: the caller must only feed frames recorded after the user is set.
+         */
+        fun forCalibrationCapture(): SquatRepDetector =
+            SquatRepDetector(minRepDurationMs = CalibrationProfile.MIN_REP_DURATION_FLOOR_MS)
+
         // The tuned defaults, named so a CalibrationProfile can fall back to exactly these
         // values rather than repeating the literals. Every figure and its justification is
         // in the guards section of this class's documentation; these are unchanged.

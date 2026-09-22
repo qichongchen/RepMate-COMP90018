@@ -1,6 +1,7 @@
 package com.repmate.ui.workout
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.repmate.data.repo.CalibrationRepository
@@ -11,6 +12,7 @@ import com.repmate.engine.FormScorer
 import com.repmate.engine.JumpingJackRepDetector
 import com.repmate.engine.MotionFrame
 import com.repmate.engine.PushupRepDetector
+import com.repmate.engine.RejectionGuard
 import com.repmate.engine.RepEvent
 import com.repmate.engine.RepPhase
 import com.repmate.engine.RepScore
@@ -42,9 +44,8 @@ data class LiveWorkoutUiState(
 )
 
 /**
- * Backs [LiveWorkoutScreen]. Unlike `CalibrationViewModel`, this one is wired to real sensor
- * data end to end: [SensorSource.frames] feeds the real detector for [ExerciseType.SQUAT]/
- * [ExerciseType.JUMPING_JACK] (squat and jumping-jack both have recorded-trace-backed detectors
+ * Backs [LiveWorkoutScreen]. Wired to real sensor data end to end, like `CalibrationViewModel`:
+ * [SensorSource.frames] feeds the real detector for [ExerciseType.SQUAT]/[ExerciseType.JUMPING_JACK] (squat and jumping-jack both have recorded-trace-backed detectors
  * already), each detected [RepEvent] is scored by the real [FormScorer] against the user's saved
  * [CalibrationProfile] (or `null`, which [FormScorer] already handles), and the score is
  * persisted for real via [SessionRepository] once the workout ends.
@@ -85,6 +86,7 @@ class LiveWorkoutViewModel
         private var calibrationProfile: CalibrationProfile? = null
         private val rawReps = mutableListOf<RepEvent>()
         private val scoredReps = mutableListOf<RepScore>()
+        private val rejectedByGuard = mutableMapOf<RejectionGuard, Int>()
 
         private lateinit var processFrame: (MotionFrame) -> RepEvent?
         private lateinit var currentPhase: () -> RepPhase
@@ -100,6 +102,7 @@ class LiveWorkoutViewModel
 
             viewModelScope.launch {
                 calibrationProfile = calibrationRepository.getProfile(exerciseType)
+                Log.i(TAG, "$exerciseType workout started, " + (calibrationProfile?.describe() ?: "no profile: tuned defaults"))
                 bindDetector(exerciseType)
                 startTimer()
                 collectFrames()
@@ -122,6 +125,10 @@ class LiveWorkoutViewModel
             when (exerciseType) {
                 ExerciseType.SQUAT -> {
                     val detector = SquatRepDetector(calibrationProfile)
+                    detector.onRejectedWindow = { window ->
+                        window.failures.forEach { rejectedByGuard.merge(it.guard, 1, Int::plus) }
+                        Log.i(TAG, "rejected window: ${window.describe()}")
+                    }
                     processFrame = detector::process
                     currentPhase = { detector.phase }
                 }
@@ -160,6 +167,13 @@ class LiveWorkoutViewModel
             val score = formScorer.score(repEvent, calibrationProfile, previousReps = rawReps.toList())
             rawReps += repEvent
             scoredReps += score
+            // Same shape as RepMateCalibration's per-rep line, so a workout's reps can be read
+            // side by side with the calibration reps its profile was derived from.
+            Log.i(
+                TAG,
+                "rep ${scoredReps.size}: duration ${repEvent.endMs - repEvent.startMs} ms, " +
+                    "amplitude %.2f, score %.1f".format(repEvent.amplitude, score.score),
+            )
             repFeedback.onRepDetected(scoredReps.size)
             _uiState.update { it.copy(repCount = scoredReps.size, lastRepScore = score) }
         }
@@ -171,6 +185,8 @@ class LiveWorkoutViewModel
         /** Saves the session for real via [SessionRepository], then fires [workoutFinished]. */
         fun onEndWorkoutClicked() {
             if (!::activeExerciseType.isInitialized) return
+            Log.i(TAG, "workout ended: ${scoredReps.size} reps counted, windows rejected by guard: " +
+                (rejectedByGuard.takeIf { it.isNotEmpty() } ?: "none"))
             frameCollectionJob?.cancel()
             timerJob?.cancel()
 
@@ -198,6 +214,10 @@ class LiveWorkoutViewModel
                         }
                     }
                 }
+        }
+
+        private companion object {
+            const val TAG = "RepMateWorkout"
         }
 
         override fun onCleared() {
