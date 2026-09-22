@@ -6,6 +6,15 @@
          normal, not dangerous, permission: granted at install, no runtime prompt needed. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- The push-up camera workout (com.repmate.ui.workout.pushup). Dangerous, so it's requested
+         at runtime with a reason; see PushupWorkoutScreen's permission rationale. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- required="false": the rest of the app is IMU-only and must still install on a phone with
+         no camera; only Push-up is unavailable there. -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
     <application
         android:name=".RepMateApplication"
         android:allowBackup="true"
