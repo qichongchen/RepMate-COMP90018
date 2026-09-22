@@ -92,9 +92,35 @@ class CalibrationProfileTest {
         // The raw measurements each derived value is traceable to.
         assertEquals(5, profile.sampleCount)
         assertEquals(4.0f, profile.softestSampleAmplitude)
+        assertEquals(6.0f, profile.loudestSampleAmplitude)
         assertEquals(800L, profile.shortestSampleMs)
         assertEquals(1000L, profile.longestSampleMs)
         assertEquals(1000L, profile.fastestSampleGapMs)
+    }
+
+    @Test
+    fun `an omitted loudest amplitude defaults to the softest rather than to zero`() {
+        // The field is additive, so a profile constructed without it must still satisfy
+        // loudest >= softest -- the invariant a consumer of the pair relies on. Zero would
+        // break it, and would also claim an amplitude evaluate() rejects as impossible.
+        val profile = CalibrationProfile(
+            minAmplitude = 1.3f,
+            minRepDurationMs = 500L,
+            maxRepDurationMs = 2600L,
+            cooldownMs = 700L,
+            sampleCount = 5,
+            softestSampleAmplitude = 2.0f,
+            shortestSampleMs = 800L,
+            longestSampleMs = 1500L,
+            fastestSampleGapMs = 1000L,
+            notes = emptyList()
+        )
+
+        assertEquals(2.0f, profile.loudestSampleAmplitude)
+        assertTrue(
+            profile.loudestSampleAmplitude >= profile.softestSampleAmplitude,
+            "loudest must never sit below softest"
+        )
     }
 
     // --- the duration floor and ceiling ------------------------------------------------------
