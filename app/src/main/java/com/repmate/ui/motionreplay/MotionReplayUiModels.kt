@@ -50,11 +50,13 @@ internal fun repMinMagnitude(curve: List<SmoothedSample>): Float =
  * tracker 32.5 for why calibration amplitude (a swing) can't be plotted as an absolute
  * Y-coordinate directly.
  *
- * TODO(motion-replay): CalibrationProfile has no upper-bound field yet -- field request
- * (`loudestSampleAmplitude`) sent to Mohit 2026-09-17 12:18, see tracker 32.4/33.2.
+ * Now that [CalibrationProfile.loudestSampleAmplitude] exists (PR #21, merged 2026-09-22), the
+ * band is simply this rep's own curve minimum shifted up by the calibration set's softest and
+ * loudest recorded amplitudes -- the same [repMinMagnitude] anchor [rebaseCurve]'s caller already
+ * uses for the curve itself, so the band and the curve share one coordinate space.
  */
 internal fun calibrationBand(profile: CalibrationProfile, repMinMagnitude: Float): ClosedFloatingPointRange<Float> =
-    TODO("blocked on CalibrationProfile.loudestSampleAmplitude -- see tracker 32.4/33.2")
+    (repMinMagnitude + profile.softestSampleAmplitude)..(repMinMagnitude + profile.loudestSampleAmplitude)
 
 fun ReplayedSession.toMotionReplayUiState(profile: CalibrationProfile?): MotionReplayUiState {
     val reps = this.reps.mapIndexed { i, r ->
