@@ -15,6 +15,8 @@ import com.repmate.pose.ArmLock
 import com.repmate.pose.Tracking
 import com.repmate.pose.elbowAngleDegrees
 import com.repmate.pose.trackingState
+import com.repmate.safety.CheckInScheduler
+import com.repmate.safety.SafetyCheckInPreferences
 import com.repmate.ui.workout.RepFeedback
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -67,6 +69,8 @@ class PushupWorkoutViewModel
     @Inject
     constructor(
         private val sessionRepository: SessionRepository,
+        private val safetyCheckInPreferences: SafetyCheckInPreferences,
+        private val checkInScheduler: CheckInScheduler,
         @ApplicationContext context: Context,
     ) : ViewModel() {
         private val sessionId = UUID.randomUUID().toString()
@@ -168,6 +172,11 @@ class PushupWorkoutViewModel
                 )
             viewModelScope.launch {
                 sessionRepository.save(session)
+                // Safety check-in, if the user opted in from Profile -- see CheckInScheduler's
+                // KDoc for the notify/escalate chain this kicks off.
+                if (safetyCheckInPreferences.isEnabledSnapshot()) {
+                    checkInScheduler.scheduleAfterWorkout()
+                }
                 _workoutFinished.send(sessionId)
             }
         }

@@ -140,4 +140,16 @@ dependencies {
     implementation(libs.androidx.camera.view)
     // The base (fast) on-device model, bundled into the APK: no network, no API key.
     implementation(libs.mlkit.pose.detection)
+
+    // Safety check-in (com.repmate.safety): WorkManager schedules the notify-then-escalate
+    // timer chain so it survives the app being closed; hilt-work lets those CoroutineWorkers
+    // take real dependencies via @AssistedInject instead of a manual service locator.
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+    // TestListenableWorkerBuilder needs a real Android runtime for its Context, so this is an
+    // androidTest dependency, not testImplementation -- see CheckInEscalateWorkerTest.
+    androidTestImplementation(libs.androidx.work.testing)
+    // Last known location for the escalation SMS's maps link.
+    implementation(libs.play.services.location)
 }

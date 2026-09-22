@@ -1,5 +1,9 @@
 package com.repmate.ui.profile
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,15 +22,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,9 +58,18 @@ import com.repmate.ui.theme.RepMateTheme
  * every other screen in this app: previews render from a plain [ProfileUiState], no Hilt required.
  *
  * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Dark
- * theme" toggle, and "Recalibrate" are real -- the stats numbers, the other two toggles, and the
- * "Emergency contact"/"Units"/"Friends" rows are static placeholders. See the TODOs on
- * [ProfileUiState] for what each should eventually read from.
+ * theme" toggle, "Recalibrate", and the safety check-in section (toggle + emergency contact) are
+ * real -- the stats numbers, "Haptic feedback"/"Spoken rep count", and the "Units"/"Friends" rows
+ * are static placeholders. See the TODOs on [ProfileUiState] for what each should eventually read
+ * from.
+ *
+ * ## Safety check-in
+ * Turning the toggle on doesn't call [ProfileViewModel.onSafetyCheckInToggled] directly -- it
+ * first shows [SafetyCheckInDisclaimerDialog], then requests SEND_SMS/ACCESS_FINE_LOCATION/
+ * POST_NOTIFICATIONS (on 33+) together, and only persists `enabled = true` if SEND_SMS was
+ * granted (see `com.repmate.safety.SmsSafetyAlertSender`'s KDoc for why that's the one that
+ * gates the feature -- the other two degrade gracefully instead). Turning it off skips all of
+ * that. "Emergency contact" opens [EmergencyContactDialog] regardless of whether check-in is on.
  *
  * @param onSignedOut invoked once sign-out completes, so the caller (`NavGraph.kt`) can navigate
  *   back to Welcome with a cleared back stack -- this screen doesn't know about routes at all.
@@ -68,6 +87,20 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    var showDisclaimer by remember { mutableStateOf(false) }
+    var showPermissionDeniedNotice by remember { mutableStateOf(false) }
+    var showEmergencyContactDialog by remember { mutableStateOf(false) }
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+            // SEND_SMS is the only one that gates the feature -- see this file's KDoc.
+            if (grants[Manifest.permission.SEND_SMS] == true) {
+                viewModel.onSafetyCheckInToggled(true)
+            } else {
+                showPermissionDeniedNotice = true
+            }
+        }
+
     LaunchedEffect(viewModel) {
         viewModel.signedOut.collect { onSignedOut() }
     }
@@ -77,8 +110,63 @@ fun ProfileScreen(
         onSignOutClicked = viewModel::onSignOutClicked,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
         onRecalibrateClick = onRecalibrateClick,
+        onSafetyCheckInToggled = { turningOn ->
+            if (turningOn) {
+                showDisclaimer = true
+            } else {
+                viewModel.onSafetyCheckInToggled(false)
+            }
+        },
+        onEmergencyContactClick = { showEmergencyContactDialog = true },
         modifier = modifier,
     )
+
+    if (showDisclaimer) {
+        SafetyCheckInDisclaimerDialog(
+            onConfirm = {
+                showDisclaimer = false
+                val permissions =
+                    buildList {
+                        add(Manifest.permission.SEND_SMS)
+                        add(Manifest.permission.ACCESS_FINE_LOCATION)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                permissionLauncher.launch(permissions.toTypedArray())
+            },
+            onDismiss = { showDisclaimer = false },
+        )
+    }
+
+    if (showPermissionDeniedNotice) {
+        AlertDialog(
+            onDismissRequest = { showPermissionDeniedNotice = false },
+            confirmButton = {
+                TextButton(onClick = { showPermissionDeniedNotice = false }) { Text("OK") }
+            },
+            title = { Text("Safety check-in stays off") },
+            text = {
+                Text(
+                    "Without permission to send a text message, RepMate can't alert your " +
+                        "emergency contact, so this feature needs to stay off. You can turn it " +
+                        "back on any time.",
+                )
+            },
+        )
+    }
+
+    if (showEmergencyContactDialog) {
+        EmergencyContactDialog(
+            initialName = uiState.emergencyContactName,
+            initialPhone = uiState.emergencyContactPhone,
+            onSave = { name, phone ->
+                viewModel.onEmergencyContactSaved(name, phone)
+                showEmergencyContactDialog = false
+            },
+            onDismiss = { showEmergencyContactDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -87,6 +175,8 @@ private fun ProfileContent(
     onSignOutClicked: () -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
     onRecalibrateClick: () -> Unit,
+    onSafetyCheckInToggled: (Boolean) -> Unit = {},
+    onEmergencyContactClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -111,9 +201,13 @@ private fun ProfileContent(
         )
 
         SettingsSection(label = "safety check-in") {
-            SettingsToggleRow(label = "Safety check-in", checked = uiState.safetyCheckInEnabled)
+            SettingsToggleRow(
+                label = "Safety check-in",
+                checked = uiState.safetyCheckInEnabled,
+                onCheckedChange = onSafetyCheckInToggled,
+            )
             SettingsDivider()
-            SettingsNavigationRow(label = "Emergency contact")
+            SettingsNavigationRow(label = "Emergency contact", onClick = onEmergencyContactClick)
         }
 
         SettingsSection(label = "preferences") {
@@ -358,6 +452,68 @@ private fun SettingsNavigationRow(
             )
         }
     }
+}
+
+/** Shown once, before the permission request, when turning safety check-in on. */
+@Composable
+private fun SafetyCheckInDisclaimerDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Turn on safety check-in?") },
+        text = {
+            Text(
+                "This notifies a contact you choose. It is not an emergency service. In an " +
+                    "emergency, call 000 or use your phone's built-in SOS.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** The one emergency contact safety check-in alerts -- name and phone number, both required to save. */
+@Composable
+private fun EmergencyContactDialog(
+    initialName: String,
+    initialPhone: String,
+    onSave: (name: String, phone: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var phone by remember { mutableStateOf(initialPhone) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Emergency contact") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone number") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name.trim(), phone.trim()) },
+                enabled = name.isNotBlank() && phone.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 private val PREVIEW_STATE =
