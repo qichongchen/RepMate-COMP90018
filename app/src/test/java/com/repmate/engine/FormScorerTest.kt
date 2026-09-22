@@ -15,6 +15,7 @@ class FormScorerTest {
         cooldownMs = 700L,
         sampleCount = 5,
         softestSampleAmplitude = 2.0f,
+        loudestSampleAmplitude = 2.5f,
         shortestSampleMs = 800L,
         longestSampleMs = 1500L,
         fastestSampleGapMs = 1000L,
