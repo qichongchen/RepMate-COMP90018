@@ -48,7 +48,8 @@ class RoomSessionRepository @Inject constructor(
             exercise = ExerciseType.valueOf(sessionEntity.exercise),
             startedAt = sessionEntity.startedAt,
             reps = reps,
-            frames = null
+            frames = null,
+            endedAt = sessionEntity.endedAt
         )
     }
 
@@ -60,7 +61,8 @@ class RoomSessionRepository @Inject constructor(
             id = session.id,
             ownerId = ownerId,
             exercise = session.exercise.name,
-            startedAt = session.startedAt
+            startedAt = session.startedAt,
+            endedAt = session.endedAt
         )
 
         val repScoreEntities = session.reps.map { rep ->
@@ -125,7 +127,8 @@ class RoomSessionRepository @Inject constructor(
                         exercise = ExerciseType.valueOf(sessionEntity.exercise),
                         startedAt = sessionEntity.startedAt,
                         reps = reps,
-                        frames = null
+                        frames = null,
+                        endedAt = sessionEntity.endedAt
                     )
                 }
         }

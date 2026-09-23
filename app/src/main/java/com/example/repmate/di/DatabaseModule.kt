@@ -13,6 +13,7 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import com.example.repmate.data.MIGRATION_2_3
 import com.example.repmate.data.MIGRATION_3_4
+import com.example.repmate.data.MIGRATION_4_5
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -30,7 +31,8 @@ object DatabaseModule {
         )
             .addMigrations(
                 MIGRATION_2_3,
-                MIGRATION_3_4
+                MIGRATION_3_4,
+                MIGRATION_4_5
             )
             .build()
     }
