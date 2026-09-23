@@ -100,9 +100,10 @@ fun MotionReplayScreen(
  * - STATE 3, [MotionReplayUiState.isReplayAvailable] `false`: [NoReplayDataBody] -- the plain
  *   [RepScore]s from [MotionReplayScreenState.fallbackReps], no curve.
  * - STATE 1, the current rep is [MotionReplayRepUi.Calibrated]: [CalibratedReplayBody] -- curve,
- *   calibration band, score, range percent, tempo, reasons. Not reachable yet (see
- *   [MotionReplayViewModel]'s KDoc on why `profile = null` is hardcoded), but rendered anyway so
- *   the screen is ready the moment that constraint lifts.
+ *   calibration band, score, range percent, tempo, reasons. Not reachable yet for a real live
+ *   session (see [com.repmate.ui.workout.LiveWorkoutViewModel]'s `frames = null` -- no session
+ *   saved today has frame data for the replayer to work with), but rendered anyway so the screen
+ *   is ready the moment that gap is closed.
  * - STATE 2, the current rep is [MotionReplayRepUi.Uncalibrated]: [UncalibratedReplayBody] -- rep
  *   count and tempo only, no curve, plus a "Calibrate now" prompt.
  */
@@ -276,7 +277,8 @@ private fun NoReplayDataBody(
 
 /**
  * STATE 1: a calibrated rep's real motion curve, score, and metrics, with the calibration-range
- * band shaded behind the curve. Not reachable yet -- see [MotionReplayViewModel]'s KDoc.
+ * band shaded behind the curve. Not reachable yet for a real live session -- see
+ * [com.repmate.ui.workout.LiveWorkoutViewModel]'s `frames = null`.
  */
 @Composable
 private fun CalibratedReplayBody(
