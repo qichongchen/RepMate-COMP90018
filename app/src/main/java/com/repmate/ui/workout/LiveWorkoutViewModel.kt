@@ -208,6 +208,7 @@ class LiveWorkoutViewModel
                     startedAt = startedAtWallClockMs,
                     reps = scoredReps.toList(),
                     frames = null,
+                    endedAt = System.currentTimeMillis(),
                 )
             viewModelScope.launch {
                 sessionRepository.save(session)

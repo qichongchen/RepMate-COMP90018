@@ -78,5 +78,6 @@ data class WorkoutSession(
     val exercise: ExerciseType,
     val startedAt: Long,
     val reps: List<RepScore>,
-    val frames: List<MotionFrame>? = null
+    val frames: List<MotionFrame>? = null,
+    val endedAt: Long? = null
 )
