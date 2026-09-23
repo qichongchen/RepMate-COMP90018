@@ -15,6 +15,14 @@
         android:name="android.hardware.camera.any"
         android:required="false" />
 
+    <!-- Safety check-in (com.repmate.safety), opted into from Profile. All three are dangerous
+         and requested at runtime with the disclaimer/rationale in ProfileScreen; SEND_SMS is the
+         one whose denial keeps the feature off (see SmsSafetyAlertSender's KDoc), the other two
+         degrade gracefully (no location in the alert / no "are you okay" notification). -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".RepMateApplication"
         android:allowBackup="true"
@@ -45,6 +53,27 @@
           in app/src/debug/AndroidManifest.xml instead, which the manifest merger folds into the
           debug variant only.
         -->
+
+        <!-- Handles the "I'm OK" action tapped on the safety check-in notification (see
+             CheckInNotificationPresenter). Not exported: only this app's own PendingIntent
+             invokes it, there is no reason for another app to be able to trigger it. -->
+        <receiver
+            android:name="com.repmate.safety.CheckInAckReceiver"
+            android:exported="false" />
+
+        <!-- Opts into on-demand WorkManager initialization (RepMateApplication.Configuration.Provider)
+             instead of the default eager one, which is what lets HiltWorkerFactory supply
+             CheckInNotifyWorker/CheckInEscalateWorker's real dependencies. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

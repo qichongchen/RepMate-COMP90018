@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.repmate.data.repo.SessionRepository
+import com.repmate.safety.CheckInScheduler
+import com.repmate.safety.SafetyCheckInPreferences
+import com.repmate.safety.SafetyContact
 import com.repmate.ui.auth.accountDisplayFor
 import com.repmate.ui.theme.ThemePreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,11 +40,17 @@ data class ProfileUiState(
     val averageScore: Float = 8.1f,
     // TODO(data.local / settings): both toggles are display-only placeholders (see ProfileScreen's
     // non-interactive Switches) until a real settings store exists to read/write them from.
-    val safetyCheckInEnabled: Boolean = false,
     val hapticFeedbackEnabled: Boolean = true,
     val spokenRepCountEnabled: Boolean = false,
-    /** Real, unlike the toggles above -- mirrors [ThemePreferences.isDarkThemeEnabled]. */
+    /** Real, unlike the two toggles above -- mirrors [ThemePreferences.isDarkThemeEnabled]. */
     val darkThemeEnabled: Boolean = true,
+    /** Real -- mirrors [SafetyCheckInPreferences.isEnabled]. Turning this on from [ProfileScreen]
+     * goes through a disclaimer and a permission request first; see its KDoc. */
+    val safetyCheckInEnabled: Boolean = false,
+    /** Real -- mirror [SafetyCheckInPreferences.contact]'s two halves. Both empty means no
+     * contact has been saved yet. */
+    val emergencyContactName: String = "",
+    val emergencyContactPhone: String = "",
 )
 
 /**
@@ -57,6 +66,8 @@ class ProfileViewModel
         private val firebaseAuth: FirebaseAuth,
         private val themePreferences: ThemePreferences,
         private val sessionRepository: SessionRepository,
+        private val safetyCheckInPreferences: SafetyCheckInPreferences,
+        private val checkInScheduler: CheckInScheduler,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(buildInitialUiState(firebaseAuth))
         val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
@@ -91,6 +102,23 @@ class ProfileViewModel
                     }
                 }
             }
+
+            viewModelScope.launch {
+                safetyCheckInPreferences.isEnabled.collect { enabled ->
+                    _uiState.update { it.copy(safetyCheckInEnabled = enabled) }
+                }
+            }
+
+            viewModelScope.launch {
+                safetyCheckInPreferences.contact.collect { contact ->
+                    _uiState.update {
+                        it.copy(
+                            emergencyContactName = contact?.name.orEmpty(),
+                            emergencyContactPhone = contact?.phoneNumber.orEmpty(),
+                        )
+                    }
+                }
+            }
         }
 
         /**
@@ -105,6 +133,27 @@ class ProfileViewModel
         fun onDarkThemeToggled(enabled: Boolean) {
             viewModelScope.launch {
                 themePreferences.setDarkThemeEnabled(enabled)
+            }
+        }
+
+        /**
+         * Called by [ProfileScreen] once it has already handled the disclaimer and the
+         * permission request -- this just persists the result. [enabled] being true always means
+         * SEND_SMS was granted; [ProfileScreen] never calls this with true otherwise.
+         */
+        fun onSafetyCheckInToggled(enabled: Boolean) {
+            viewModelScope.launch {
+                safetyCheckInPreferences.setEnabled(enabled)
+                if (!enabled) checkInScheduler.disable()
+            }
+        }
+
+        fun onEmergencyContactSaved(
+            name: String,
+            phoneNumber: String,
+        ) {
+            viewModelScope.launch {
+                safetyCheckInPreferences.setContact(SafetyContact(name, phoneNumber))
             }
         }
 

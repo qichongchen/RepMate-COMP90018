@@ -17,6 +17,8 @@ import com.repmate.engine.RepPhase
 import com.repmate.engine.RepScore
 import com.repmate.engine.SquatRepDetector
 import com.repmate.engine.WorkoutSession
+import com.repmate.safety.CheckInScheduler
+import com.repmate.safety.SafetyCheckInPreferences
 import com.repmate.sensors.SensorSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -65,6 +67,8 @@ class LiveWorkoutViewModel
         private val sensorSource: SensorSource,
         private val calibrationRepository: CalibrationRepository,
         private val sessionRepository: SessionRepository,
+        private val safetyCheckInPreferences: SafetyCheckInPreferences,
+        private val checkInScheduler: CheckInScheduler,
         @ApplicationContext context: Context,
     ) : ViewModel() {
         private val sessionId = UUID.randomUUID().toString()
@@ -207,6 +211,11 @@ class LiveWorkoutViewModel
                 )
             viewModelScope.launch {
                 sessionRepository.save(session)
+                // Safety check-in, if the user opted in from Profile -- see CheckInScheduler's
+                // KDoc for the notify/escalate chain this kicks off.
+                if (safetyCheckInPreferences.isEnabledSnapshot()) {
+                    checkInScheduler.scheduleAfterWorkout()
+                }
                 _workoutFinished.send(sessionId)
             }
         }
