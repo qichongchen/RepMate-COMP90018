@@ -59,11 +59,14 @@ import java.util.Locale
  *   whether that leads to Calibration or straight to Live Workout -- this screen just reports the
  *   tap, it doesn't know about calibration profiles at all.
  * @param onProfileClick invoked when the top bar's avatar circle is tapped.
+ * @param onGhostDuelClick invoked when the Ghost Duel banner is tapped; the caller (`NavGraph.kt`)
+ *   navigates to Ghost Duel.
  */
 @Composable
 fun HomeScreen(
     onExerciseSelected: (ExerciseType) -> Unit,
     onProfileClick: () -> Unit,
+    onGhostDuelClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -73,6 +76,7 @@ fun HomeScreen(
         uiState = uiState,
         onExerciseSelected = onExerciseSelected,
         onProfileClick = onProfileClick,
+        onGhostDuelClick = onGhostDuelClick,
         modifier = modifier,
     )
 }
@@ -82,6 +86,7 @@ private fun HomeContent(
     uiState: HomeUiState,
     onExerciseSelected: (ExerciseType) -> Unit,
     onProfileClick: () -> Unit,
+    onGhostDuelClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -107,7 +112,7 @@ private fun HomeContent(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             ExercisePickerCard(onExerciseSelected = onExerciseSelected)
-            GhostDuelBanner(opponentName = uiState.ghostDuelOpponentName)
+            GhostDuelBanner(opponentName = uiState.ghostDuelOpponentName, onClick = onGhostDuelClick)
 
             if (uiState.lastSession != null) {
                 Column {
@@ -236,11 +241,10 @@ private fun ExercisePickerCard(
 @Composable
 private fun GhostDuelBanner(
     opponentName: String?,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Static placeholder: no real opponent-matching data source exists yet, so this isn't
-    // tappable and doesn't navigate anywhere -- it's content, not yet a real feature entry point.
-    RepMateCard(modifier = modifier) {
+    RepMateCard(modifier = modifier.clickable(onClickLabel = "Ghost duel", onClick = onClick)) {
         Text(
             text = "ghost duel",
             style = MaterialTheme.typography.labelLarge,
@@ -371,7 +375,7 @@ private val PREVIEW_STATE =
 @Composable
 private fun HomeScreenLightPreview() {
     RepMateTheme(darkTheme = false) {
-        HomeContent(uiState = PREVIEW_STATE, onExerciseSelected = {}, onProfileClick = {})
+        HomeContent(uiState = PREVIEW_STATE, onExerciseSelected = {}, onProfileClick = {}, onGhostDuelClick = {})
     }
 }
 
@@ -379,6 +383,6 @@ private fun HomeScreenLightPreview() {
 @Composable
 private fun HomeScreenDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        HomeContent(uiState = PREVIEW_STATE, onExerciseSelected = {}, onProfileClick = {})
+        HomeContent(uiState = PREVIEW_STATE, onExerciseSelected = {}, onProfileClick = {}, onGhostDuelClick = {})
     }
 }
