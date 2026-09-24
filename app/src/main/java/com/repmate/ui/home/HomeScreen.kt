@@ -40,6 +40,7 @@ import com.example.repmate.BuildConfig
 import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
 import com.repmate.ui.components.ExerciseChip
+import com.repmate.ui.components.displayLabel
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
@@ -339,13 +340,6 @@ private fun LeaderboardCard(
         }
     }
 }
-
-private fun ExerciseType.displayLabel(): String =
-    when (this) {
-        ExerciseType.SQUAT -> "Squat"
-        ExerciseType.PUSHUP -> "Push-up"
-        ExerciseType.JUMPING_JACK -> "Jumping Jack"
-    }
 
 // TODO: same placeholder icon (FitnessCenter) for all three exercises for now, per request --
 // swap in distinct per-exercise icons once suitable ones are found, same as onboarding's page 1

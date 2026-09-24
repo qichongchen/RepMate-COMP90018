@@ -30,6 +30,8 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
+import com.repmate.ui.history.HistoryScreen
+import com.repmate.ui.history.SessionDetailScreen
 import com.repmate.ui.home.CalibrationGateViewModel
 import com.repmate.ui.home.HomeScreen
 import com.repmate.ui.leaderboard.LeaderboardScreen
@@ -94,6 +96,9 @@ object RepMateDestinations {
     const val PUSHUP_WORKOUT = "pushup_workout"
     const val MOTION_REPLAY = "motion_replay/{$ARG_SESSION_ID}"
 
+    /** Reached only from a History card tap -- see the `HISTORY` composable below. Distinct from [MOTION_REPLAY], which is reached only from the post-workout summary (see that route's own KDoc in `RepMateNavGraph`). */
+    const val SESSION_DETAIL = "session_detail/{$ARG_SESSION_ID}"
+
     /**
      * `email` is an optional query param (`?email={email}`), not a required path segment: this
      * screen is also reachable without one (any future "forgot password" entry point that isn't
@@ -110,6 +115,8 @@ object RepMateDestinations {
     fun liveWorkout(exerciseType: ExerciseType) = "live_workout/${exerciseType.name}"
 
     fun motionReplay(sessionId: String) = "motion_replay/$sessionId"
+
+    fun sessionDetail(sessionId: String) = "session_detail/$sessionId"
 
     fun forgotPassword(email: String? = null): String =
         if (email.isNullOrBlank()) {
@@ -152,9 +159,10 @@ private fun String?.toBottomNavItemOrNull(): BottomNavItem? =
     }
 
 /**
- * RepMate's full navigation graph. History and Leaderboard are still [PlaceholderScreen]s; every
- * other destination is a real screen built one at a time on this graph, which wires up the
- * routes, the arguments they carry, and the navigation decisions between them.
+ * RepMate's full navigation graph -- every destination is a real screen, built one at a time on
+ * this graph, which wires up the routes, the arguments they carry, and the navigation decisions
+ * between them. [PlaceholderScreen] remains available for whatever destination is next to be
+ * built this way.
  *
  * The bottom nav bar is hosted here, in a [Scaffold] wrapping the [NavHost], rather than inside
  * each of home/history/leaderboard/profile individually -- it only shows for those four routes,
@@ -332,7 +340,13 @@ fun RepMateNavGraph(
                     onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
                 )
             }
-            composable(RepMateDestinations.HISTORY) { PlaceholderScreen(RepMateDestinations.HISTORY) }
+            composable(RepMateDestinations.HISTORY) {
+                HistoryScreen(
+                    onSessionClick = { sessionId ->
+                        navController.navigate(RepMateDestinations.sessionDetail(sessionId))
+                    },
+                )
+            }
             composable(RepMateDestinations.LEADERBOARD) { LeaderboardScreen()}
             composable(RepMateDestinations.PROFILE) {
                 // Local to this destination, not hoisted to RepMateNavGraph level like
@@ -377,6 +391,17 @@ fun RepMateNavGraph(
                     onCalibrateClick = { exerciseType ->
                         navController.navigate(RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START))
                     },
+                )
+            }
+
+            composable(
+                route = RepMateDestinations.SESSION_DETAIL,
+                arguments = listOf(navArgument(RepMateDestinations.ARG_SESSION_ID) { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val sessionId = backStackEntry.arguments?.getString(RepMateDestinations.ARG_SESSION_ID).orEmpty()
+                SessionDetailScreen(
+                    sessionId = sessionId,
+                    onBackClick = { navController.popBackStack() },
                 )
             }
 
