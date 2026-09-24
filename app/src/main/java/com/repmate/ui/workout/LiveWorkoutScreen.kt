@@ -54,6 +54,7 @@ import com.repmate.engine.RepPhase
 import com.repmate.engine.RepScore
 import com.repmate.ui.audio.JumpingJackMetronome
 import com.repmate.ui.components.RepMateButton
+import com.repmate.ui.components.displayLabel
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
 
@@ -364,13 +365,6 @@ private fun PauseResumeButton(
         )
     }
 }
-
-private fun ExerciseType.displayLabel(): String =
-    when (this) {
-        ExerciseType.SQUAT -> "Squat"
-        ExerciseType.PUSHUP -> "Push-up"
-        ExerciseType.JUMPING_JACK -> "Jumping Jack"
-    }
 
 private fun formatElapsed(elapsedMillis: Long): String {
     val totalSeconds = elapsedMillis / 1000
