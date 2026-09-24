@@ -1,9 +1,12 @@
 package com.repmate.data.sync
 
 import android.util.Log
+import com.example.repmate.data.auth.AuthRepository
 import com.repmate.data.cloud.FirestoreWorkoutDataSource
 import com.repmate.data.local.RoomSessionRepository
 import com.repmate.data.repo.SessionRepository
+import com.repmate.data.cloud.toRoomRepScores
+import com.repmate.data.cloud.toRoomSession
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -13,6 +16,7 @@ import javax.inject.Singleton
 class SyncingSessionRepository @Inject constructor(
     private val roomRepository: RoomSessionRepository,
     private val firestoreWorkoutDataSource: FirestoreWorkoutDataSource,
+    private val authRepository: AuthRepository,
 ) : SessionRepository {
 
     private companion object {
@@ -41,4 +45,44 @@ class SyncingSessionRepository @Inject constructor(
 
     override suspend fun getById(id: String): WorkoutSession? =
         roomRepository.getById(id)
+
+    suspend fun restoreMissingSessions(): Result<Int> {
+        val userId = authRepository.getCurrentUserId()
+            ?: return Result.failure(
+                IllegalStateException("No authenticated user")
+            )
+
+        val cloudSessions = firestoreWorkoutDataSource
+            .fetchWorkoutSessions(userId)
+            .getOrElse { error ->
+                Log.w(
+                    TAG,
+                    "Failed to fetch Firestore sessions for restore",
+                    error
+                )
+                return Result.failure(error)
+            }
+
+        var restoredCount = 0
+
+        cloudSessions.forEach { cloudSession ->
+            val inserted = roomRepository.insertIfMissing(
+                session = cloudSession.toRoomSession(
+                    ownerId = userId
+                ),
+                repScores = cloudSession.toRoomRepScores()
+            )
+
+            if (inserted) {
+                restoredCount++
+            }
+        }
+
+        Log.d(
+            TAG,
+            "Restored $restoredCount missing workout sessions"
+        )
+
+        return Result.success(restoredCount)
+    }
 }

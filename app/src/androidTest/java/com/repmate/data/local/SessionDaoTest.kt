@@ -11,6 +11,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
 
 @RunWith(AndroidJUnit4::class)
 class SessionDaoTest {
@@ -207,5 +210,145 @@ class SessionDaoTest {
         assertEquals(1, sessions.size)
         assertEquals("user-a-session", sessions[0].id)
         assertEquals("user-a", sessions[0].ownerId)
+    }
+
+
+    @Test
+    fun insertSessionIfMissing_insertsSessionAndReps() = runTest {
+        val session = WorkoutSessionEntity(
+            id = "restored-session",
+            ownerId = ownerId,
+            exercise = "SQUAT",
+            startedAt = 1000L,
+            endedAt = 5000L
+        )
+
+        val reps = listOf(
+            RepScoreEntity(
+                sessionId = "restored-session",
+                repIndex = 0,
+                score = 80f,
+                tempoSeconds = 2.5f,
+                rangePercent = 90,
+                pauseSeconds = 0.5f,
+                reasons = "Too shallow|Fast tempo"
+            )
+        )
+
+        val inserted = sessionDao.insertSessionIfMissing(
+            session = session,
+            repScores = reps
+        )
+
+        assertTrue(inserted)
+
+        val restored = sessionDao.getSessionById(
+            id = "restored-session",
+            ownerId = ownerId
+        )
+
+        assertNotNull(restored)
+        assertEquals(5000L, restored?.endedAt)
+
+        val restoredReps =
+            sessionDao.getRepScores("restored-session")
+
+        assertEquals(1, restoredReps.size)
+        assertEquals(80f, restoredReps[0].score)
+        assertEquals(
+            "Too shallow|Fast tempo",
+            restoredReps[0].reasons
+        )
+    }
+
+    @Test
+    fun insertSessionIfMissing_preservesExistingSession() = runTest {
+        val existing = WorkoutSessionEntity(
+            id = "session-1",
+            ownerId = ownerId,
+            exercise = "SQUAT",
+            startedAt = 1000L,
+            endedAt = 2000L
+        )
+
+        val existingRep = RepScoreEntity(
+            sessionId = "session-1",
+            repIndex = 0,
+            score = 80f,
+            tempoSeconds = 2f,
+            rangePercent = 90,
+            pauseSeconds = 0.5f,
+            reasons = "Original"
+        )
+
+        sessionDao.replaceSession(
+            existing,
+            listOf(existingRep)
+        )
+
+        val cloudVersion = existing.copy(
+            endedAt = 9999L
+        )
+
+        val cloudRep = existingRep.copy(
+            score = 95f,
+            reasons = "Updated"
+        )
+
+        val inserted = sessionDao.insertSessionIfMissing(
+            session = cloudVersion,
+            repScores = listOf(cloudRep)
+        )
+
+        assertFalse(inserted)
+
+        val stored = sessionDao.getSessionById(
+            id = "session-1",
+            ownerId = ownerId
+        )
+
+        val storedReps = sessionDao.getRepScores("session-1")
+
+        assertEquals(2000L, stored?.endedAt)
+        assertEquals(1, storedReps.size)
+        assertEquals(80f, storedReps[0].score)
+        assertEquals("Original", storedReps[0].reasons)
+    }
+
+    @Test
+    fun insertSessionIfMissing_preservesLocalOnlySessions() = runTest {
+        val localSession = WorkoutSessionEntity(
+            id = "local-only",
+            ownerId = ownerId,
+            exercise = "SQUAT",
+            startedAt = 1000L
+        )
+
+        sessionDao.insertSession(localSession)
+
+        val cloudSession = WorkoutSessionEntity(
+            id = "cloud-only",
+            ownerId = ownerId,
+            exercise = "SQUAT",
+            startedAt = 2000L
+        )
+
+        val inserted = sessionDao.insertSessionIfMissing(
+            session = cloudSession,
+            repScores = emptyList()
+        )
+
+        assertTrue(inserted)
+
+        val sessions = sessionDao.observeRecentSessions(
+            ownerId = ownerId,
+            limit = 10
+        ).first()
+
+        assertEquals(2, sessions.size)
+        assertEquals(
+            listOf("cloud-only", "local-only"),
+            sessions.map { it.id }
+        )
     }
 }
