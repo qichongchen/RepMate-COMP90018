@@ -30,6 +30,7 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
+import com.repmate.ui.ghostduel.GhostDuelScreen
 import com.repmate.ui.history.HistoryScreen
 import com.repmate.ui.history.SessionDetailScreen
 import com.repmate.ui.home.CalibrationGateViewModel
@@ -73,6 +74,9 @@ object RepMateDestinations {
     const val HISTORY = "history"
     const val LEADERBOARD = "leaderboard"
     const val PROFILE = "profile"
+
+    /** Bare route, no arguments -- the friend/exercise picks happen on the screen itself, not carried in from the caller. Reached only from Home's Ghost Duel banner. */
+    const val GHOST_DUEL = "ghost_duel"
 
     const val ARG_EXERCISE_TYPE = "exerciseType"
     const val ARG_CALIBRATION_ENTRY_POINT = "entryPoint"
@@ -185,6 +189,39 @@ fun RepMateNavGraph(
     // "is this exercise calibrated" mechanism.
     val calibrationGateViewModel: CalibrationGateViewModel = hiltViewModel()
     val coroutineScope = rememberCoroutineScope()
+
+    // The one place that decides where an exercise pick leads -- shared by Home's exercise chips
+    // and Ghost Duel's "Start Workout to Beat It" button, so there's exactly one copy of the
+    // calibration-gate branching rather than a second one drifting out of sync with it.
+    val startExercise: (ExerciseType) -> Unit = { exerciseType ->
+        if (exerciseType == ExerciseType.PUSHUP) {
+            // Push-ups skip the calibration gate entirely and go straight to their
+            // own camera workout screen -- there is no per-user profile to check
+            // yet (see CalibrationUiState.Unsupported, still shown if this exercise
+            // is ever reached through Calibration some other way, e.g. Profile's
+            // Recalibrate picker), and PUSHUP_WORKOUT isn't parameterised by
+            // exercise type the way LIVE_WORKOUT is, since it only ever means this
+            // one exercise.
+            navController.navigate(RepMateDestinations.PUSHUP_WORKOUT)
+        } else {
+            // Real logic, not a stub: this always resolves to CALIBRATION right now
+            // only because CalibrationGateViewModel's backing check is itself
+            // stubbed to always report false (no Room table for calibration
+            // profiles yet) -- see StubCalibrationRepository. The branch itself is
+            // real, so a chip tap for an already-calibrated exercise correctly goes
+            // straight to live_workout the moment that stub is replaced with a real
+            // query.
+            coroutineScope.launch {
+                val destination =
+                    if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
+                        RepMateDestinations.liveWorkout(exerciseType)
+                    } else {
+                        RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
+                    }
+                navController.navigate(destination)
+            }
+        }
+    }
 
     // The one place that decides "onboarding or home" after sign-up, log-in, or guest sign-in
     // all succeed -- so none of the three hardcodes a destination the way LogIn used to
@@ -308,36 +345,18 @@ fun RepMateNavGraph(
 
             composable(RepMateDestinations.HOME) {
                 HomeScreen(
-                    onExerciseSelected = { exerciseType ->
-                        if (exerciseType == ExerciseType.PUSHUP) {
-                            // Push-ups skip the calibration gate entirely and go straight to their
-                            // own camera workout screen -- there is no per-user profile to check
-                            // yet (see CalibrationUiState.Unsupported, still shown if this exercise
-                            // is ever reached through Calibration some other way, e.g. Profile's
-                            // Recalibrate picker), and PUSHUP_WORKOUT isn't parameterised by
-                            // exercise type the way LIVE_WORKOUT is, since it only ever means this
-                            // one exercise.
-                            navController.navigate(RepMateDestinations.PUSHUP_WORKOUT)
-                        } else {
-                            // Real logic, not a stub: this always resolves to CALIBRATION right now
-                            // only because CalibrationGateViewModel's backing check is itself
-                            // stubbed to always report false (no Room table for calibration
-                            // profiles yet) -- see StubCalibrationRepository. The branch itself is
-                            // real, so a chip tap for an already-calibrated exercise correctly goes
-                            // straight to live_workout the moment that stub is replaced with a real
-                            // query.
-                            coroutineScope.launch {
-                                val destination =
-                                    if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
-                                        RepMateDestinations.liveWorkout(exerciseType)
-                                    } else {
-                                        RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
-                                    }
-                                navController.navigate(destination)
-                            }
-                        }
-                    },
+                    onExerciseSelected = startExercise,
                     onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                    onGhostDuelClick = { navController.navigate(RepMateDestinations.GHOST_DUEL) },
+                )
+            }
+            composable(RepMateDestinations.GHOST_DUEL) {
+                GhostDuelScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onStartWorkoutClick = startExercise,
+                    // TODO: once a real friends-management screen exists (Jasper's work), point this at
+                    // that screen instead of Profile, and wire Profile's own "Friends" row the same way.
+                    onAddFriendClick = { navController.navigate(RepMateDestinations.PROFILE) },
                 )
             }
             composable(RepMateDestinations.HISTORY) {
