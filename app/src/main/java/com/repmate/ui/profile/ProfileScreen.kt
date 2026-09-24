@@ -47,8 +47,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.repmate.engine.ExerciseType
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
+import com.repmate.ui.tutorial.ExerciseTutorialDialog
 
 /**
  * The Profile tab: an account header, a stats summary, and grouped settings rows. Hosts the
@@ -58,8 +60,8 @@ import com.repmate.ui.theme.RepMateTheme
  * every other screen in this app: previews render from a plain [ProfileUiState], no Hilt required.
  *
  * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Haptic
- * feedback"/"Spoken rep count"/"Dark theme" toggles, "Recalibrate", and the safety check-in
- * section (toggle + emergency contact) are real -- the average score and the "Friends" row are
+ * feedback"/"Spoken rep count"/"Dark theme" toggles, "Recalibrate", "How exercises work", and the
+ * safety check-in section (toggle + emergency contact) are real -- the average score and the "Friends" row are
  * static placeholders. See the TODO on [ProfileUiState.averageScore] for what it should
  * eventually read from.
  *
@@ -70,6 +72,12 @@ import com.repmate.ui.theme.RepMateTheme
  * granted (see `com.repmate.safety.SmsSafetyAlertSender`'s KDoc for why that's the one that
  * gates the feature -- the other two degrade gracefully instead). Turning it off skips all of
  * that. "Emergency contact" opens [EmergencyContactDialog] regardless of whether check-in is on.
+ *
+ * ## How exercises work
+ * Opens [ExerciseTutorialPicker], and a pick opens that exercise's [ExerciseTutorialDialog] with
+ * no checkbox and "Got it": someone opening it on purpose has nothing to opt out of, and nothing
+ * is persisted from this path. Both dialogs are local to this screen, like the emergency contact
+ * one -- neither navigates anywhere, so `NavGraph.kt` doesn't need to know about them.
  *
  * @param onSignedOut invoked once sign-out completes, so the caller (`NavGraph.kt`) can navigate
  *   back to Welcome with a cleared back stack -- this screen doesn't know about routes at all.
@@ -90,6 +98,8 @@ fun ProfileScreen(
     var showDisclaimer by remember { mutableStateOf(false) }
     var showPermissionDeniedNotice by remember { mutableStateOf(false) }
     var showEmergencyContactDialog by remember { mutableStateOf(false) }
+    var showTutorialPicker by remember { mutableStateOf(false) }
+    var tutorialExercise by remember { mutableStateOf<ExerciseType?>(null) }
 
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -120,6 +130,7 @@ fun ProfileScreen(
             }
         },
         onEmergencyContactClick = { showEmergencyContactDialog = true },
+        onHowExercisesWorkClick = { showTutorialPicker = true },
         modifier = modifier,
     )
 
@@ -169,6 +180,28 @@ fun ProfileScreen(
             onDismiss = { showEmergencyContactDialog = false },
         )
     }
+
+    if (showTutorialPicker) {
+        ExerciseTutorialPicker(
+            onExerciseSelected = { exerciseType ->
+                showTutorialPicker = false
+                tutorialExercise = exerciseType
+            },
+            onDismissRequest = { showTutorialPicker = false },
+        )
+    }
+
+    tutorialExercise?.let { exerciseType ->
+        // "Got it" and back both just close it: there's no checkbox on this path, so the
+        // dontShowAgainChecked argument is always false and deliberately ignored.
+        ExerciseTutorialDialog(
+            exerciseType = exerciseType,
+            showDismissCheckbox = false,
+            ctaLabel = "Got it",
+            onContinue = { tutorialExercise = null },
+            onCancel = { tutorialExercise = null },
+        )
+    }
 }
 
 @Composable
@@ -181,6 +214,7 @@ private fun ProfileContent(
     onRecalibrateClick: () -> Unit,
     onSafetyCheckInToggled: (Boolean) -> Unit = {},
     onEmergencyContactClick: () -> Unit = {},
+    onHowExercisesWorkClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -234,6 +268,10 @@ private fun ProfileContent(
             )
             SettingsDivider()
             SettingsNavigationRow(label = "Recalibrate", onClick = onRecalibrateClick)
+        }
+
+        SettingsSection(label = "help") {
+            SettingsNavigationRow(label = "How exercises work", onClick = onHowExercisesWorkClick)
         }
 
         SettingsSection(label = "account") {

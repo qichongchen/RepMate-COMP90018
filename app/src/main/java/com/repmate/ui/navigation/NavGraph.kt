@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -42,6 +43,8 @@ import com.repmate.ui.motionreplay.MotionReplayScreen
 import com.repmate.ui.profile.ProfileScreen
 import com.repmate.ui.profile.RecalibrateExercisePicker
 import com.repmate.ui.theme.RepMateTheme
+import com.repmate.ui.tutorial.ExerciseTutorialDialog
+import com.repmate.ui.tutorial.TutorialGateViewModel
 import com.repmate.ui.workout.LiveWorkoutScreen
 import com.repmate.ui.workout.pushup.PushupWorkoutScreen
 import kotlinx.coroutines.launch
@@ -188,12 +191,18 @@ fun RepMateNavGraph(
     // exercise-chip tap and live_workout's own entry check, rather than each owning a separate
     // "is this exercise calibrated" mechanism.
     val calibrationGateViewModel: CalibrationGateViewModel = hiltViewModel()
+    // Same reasoning again: one tutorial gate for every exercise start path.
+    val tutorialGateViewModel: TutorialGateViewModel = hiltViewModel()
     val coroutineScope = rememberCoroutineScope()
 
-    // The one place that decides where an exercise pick leads -- shared by Home's exercise chips
-    // and Ghost Duel's "Start Workout to Beat It" button, so there's exactly one copy of the
-    // calibration-gate branching rather than a second one drifting out of sync with it.
-    val startExercise: (ExerciseType) -> Unit = { exerciseType ->
+    // The exercise whose tutorial is showing (see startExercise below), or null. Saveable so a
+    // rotation mid-dialog doesn't silently drop the pick.
+    var pendingTutorialExercise by rememberSaveable { mutableStateOf<ExerciseType?>(null) }
+
+    // Where an exercise pick leads once any tutorial is out of the way: the calibration-gate
+    // branching. Only called from startExercise and the tutorial's "Continue" below, so there's
+    // exactly one copy of it rather than a second one drifting out of sync.
+    val routeToExercise: (ExerciseType) -> Unit = { exerciseType ->
         if (exerciseType == ExerciseType.PUSHUP) {
             // Push-ups skip the calibration gate entirely and go straight to their
             // own camera workout screen -- there is no per-user profile to check
@@ -237,6 +246,24 @@ fun RepMateNavGraph(
                 }
             navController.navigate(destination) {
                 popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+            }
+        }
+    }
+
+    // The one entry point for starting an exercise -- shared by Home's exercise chips and Ghost
+    // Duel's "Start Workout to Beat It" button. Shows ExerciseTutorialDialog first unless the user
+    // has opted out of it for this exercise; the dialog's "Continue" then hands on to
+    // routeToExercise. Gated here rather than in each screen's ViewModel so both paths share it:
+    // push-up's side-on camera placement matters for accuracy whichever button started it.
+    val startExercise: (ExerciseType) -> Unit = { exerciseType ->
+        // A fast double tap can land before the dialog draws; don't stack a second decision.
+        if (pendingTutorialExercise == null) {
+            coroutineScope.launch {
+                if (tutorialGateViewModel.hasOptedOutOfTutorial(exerciseType)) {
+                    routeToExercise(exerciseType)
+                } else {
+                    pendingTutorialExercise = exerciseType
+                }
             }
         }
     }
@@ -489,6 +516,25 @@ fun RepMateNavGraph(
                 )
             }
         }
+    }
+
+    // Drawn over whichever screen started the exercise (Home or Ghost Duel). Only "Continue"
+    // proceeds, and only it persists "Don't show this again"; back just closes the dialog.
+    pendingTutorialExercise?.let { exerciseType ->
+        ExerciseTutorialDialog(
+            exerciseType = exerciseType,
+            showDismissCheckbox = true,
+            ctaLabel = "Continue",
+            onContinue = { dontShowAgainChecked ->
+                pendingTutorialExercise = null
+                coroutineScope.launch {
+                    // Written before routing so the next pick already sees it.
+                    if (dontShowAgainChecked) tutorialGateViewModel.optOutOfTutorial(exerciseType)
+                    routeToExercise(exerciseType)
+                }
+            },
+            onCancel = { pendingTutorialExercise = null },
+        )
     }
 }
 

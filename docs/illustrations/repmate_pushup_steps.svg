@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <style>
+      .fig{stroke:#000;stroke-width:9;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .head{fill:#000}
+      .num{font:700 26px 'JetBrains Mono','Courier New',Courier,monospace;fill:#FFF}
+      .title{font:700 17px 'JetBrains Mono','Courier New',Courier,monospace;fill:#000;letter-spacing:.5px}
+      .sub{font:400 13px 'JetBrains Mono','Courier New',Courier,monospace;fill:#000}
+      .tag{font:700 12px 'JetBrains Mono','Courier New',Courier,monospace;fill:#000}
+      .dash{stroke:#000;stroke-width:3;fill:none;stroke-dasharray:2 7;stroke-linecap:round}
+      .ground{stroke:#000;stroke-width:1.5;stroke-linecap:round}
+      .pocket{fill:#FFF;stroke:#000;stroke-width:3;stroke-linejoin:round}
+      .lip{stroke:#000;stroke-width:4;stroke-linecap:round}
+      .figS{stroke:#000;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .ghost{stroke:#000;stroke-width:3;stroke-dasharray:3 4;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .thin{fill:none;stroke:#000;stroke-width:2}
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#000"/>
+    </marker>
+    <symbol id="phone" viewBox="0 0 26 44">
+      <rect x="1.5" y="1.5" width="23" height="41" rx="4.5" fill="#FFF" stroke="#000" stroke-width="3"/>
+      <line x1="4" y1="7" x2="22" y2="7" stroke="#000" stroke-width="1.5"/>
+      <line x1="4" y1="36" x2="22" y2="36" stroke="#000" stroke-width="1.5"/>
+      <path d="M13 28C6 23 7 16 10.5 16C12 16 13 17.5 13 17.5C13 17.5 14 16 15.5 16C19 16 20 23 13 28z" fill="#000"/>
+      <circle cx="13" cy="39.5" r="1.6" fill="#000"/>
+    </symbol>
+    <clipPath id="insetClip"><circle cx="72" cy="200" r="46"/></clipPath>
+  </defs>
+
+  <!-- Sheet + dividers -->
+  <rect width="800" height="800" fill="#FFF"/>
+  <rect x="1" y="1" width="798" height="798" fill="none" stroke="#000" stroke-width="2"/>
+  <line x1="400" y1="0" x2="400" y2="800" stroke="#000" stroke-width="1.5"/>
+  <line x1="0" y1="400" x2="800" y2="400" stroke="#000" stroke-width="1.5"/>
+
+  <!-- ========== PANEL 1 ========== -->
+  <g transform="translate(10,0)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">1</text>
+    <line class="ground" x1="30" y1="310" x2="330" y2="310"/>
+    <!-- view cone toward exercise area -->
+    <path class="dash" d="M138 272L44 232M138 276L44 304"/>
+    <text class="tag" x="62" y="222" text-anchor="middle">CAMERA</text>
+    <!-- prop block -->
+    <rect x="160" y="270" width="40" height="38" rx="3" fill="none" stroke="#000" stroke-width="2.5" stroke-dasharray="4 4"/>
+    <!-- phone leaning on block -->
+    <g transform="translate(152,288) rotate(12)">
+      <rect x="-11" y="-20" width="22" height="40" rx="4" fill="#FFF" stroke="#000" stroke-width="3"/>
+      <circle cx="-11" cy="-12" r="4.5" fill="#000"/>
+    </g>
+    <!-- crouching figure, facing left -->
+    <circle class="head" cx="244" cy="156" r="22"/>
+    <path class="fig" d="M262 308H236"/>
+    <path class="fig" d="M260 308L224 262L290 246L258 180"/>
+    <path class="fig" d="M258 184L206 214L168 264"/>
+    <circle cx="168" cy="264" r="6" fill="#000"/>
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 1: PROP UP YOUR PHONE</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Ground level, camera facing you</text>
+  </g>
+  <!-- ========== PANEL 2 ========== -->
+  <g transform="translate(410,0)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">2</text>
+    <!-- WRONG: front-on camera view -->
+    <circle cx="91" cy="150" r="17" fill="none" stroke="#000" stroke-width="3.5"/>
+    <path d="M79 138L103 162M103 138L79 162" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
+    <rect x="16" y="190" width="150" height="112" rx="14" fill="none" stroke="#000" stroke-width="3"/>
+    <circle cx="28" cy="246" r="3.5" fill="#000"/>
+    <line x1="38" y1="288" x2="154" y2="288" stroke="#000" stroke-width="1.5"/>
+    <circle class="head" cx="91" cy="228" r="12"/>
+    <path class="figS" d="M65 250H117M91 240V256M65 250L63 286M117 250L119 286"/>
+    <text class="tag" x="91" y="324" text-anchor="middle">FRONT-ON</text>
+
+    <text class="tag" x="190" y="250" text-anchor="middle" style="font-size:12px">VS</text>
+
+    <!-- RIGHT: side-on camera view -->
+    <circle cx="289" cy="150" r="17" fill="#000"/>
+    <path d="M280 150l6 6l12-13" stroke="#FFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="214" y="190" width="150" height="112" rx="14" fill="none" stroke="#000" stroke-width="5"/>
+    <circle cx="226" cy="246" r="3.5" fill="#000"/>
+        <line x1="236" y1="288" x2="352" y2="288" stroke="#000" stroke-width="1.5"/>
+    <circle class="head" cx="250" cy="240" r="10"/>
+    <path class="figS" d="M264 250V286M264 250L346 280L344 286"/>
+    <text class="tag" x="289" y="324" text-anchor="middle">SIDE-ON</text>
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 2: SIDE-ON, NOT FRONT-ON</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Reads your arm correctly</text>
+  </g>
+  <!-- ========== PANEL 3 ========== -->
+  <g transform="translate(10,400)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">3</text>
+    <line class="ground" x1="40" y1="310" x2="340" y2="310"/>
+    <g transform="translate(199,310) scale(1.18) translate(-199,-310)">
+    <circle class="head" cx="90" cy="236" r="18"/>
+    <path class="fig" d="M110 250L300 298L294 308"/>
+    <path class="fig" d="M110 250V308"/>
+    <circle cx="110" cy="250" r="6" fill="#000"/>
+    <!-- viewfinder corners -->
+    <path d="M56 214V196H74M324 196H342V214M342 304V322H324M74 322H56V304" stroke="#000" stroke-width="3.5" fill="none" stroke-linecap="square"/>
+    </g>
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 3: FRAME YOUR ARM</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Plank, whole arm in view</text>
+  </g>
+  <!-- ========== PANEL 4 ========== -->
+  <g transform="translate(410,400)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">4</text>
+    <line class="ground" x1="40" y1="310" x2="330" y2="310"/>
+    <g transform="translate(200,310) scale(1.25) translate(-200,-310)">
+    <!-- ghosted top position -->
+    <circle class="ghost" cx="130" cy="232" r="15"/>
+    <path class="ghost" d="M150 308V246L310 298"/>
+    <!-- bottom position -->
+    <circle class="head" cx="90" cy="270" r="15"/>
+    <path class="fig" d="M112 280L310 300L306 308"/>
+    <path class="fig" d="M112 280L150 262L150 308"/>
+    <!-- elbow angle arc -->
+    <path d="M150 275A13 13 0 0 1 138.2 267.6" stroke="#000" stroke-width="3" fill="none"/>
+    <text class="tag" x="128" y="262" text-anchor="middle" style="font-size:15px">&#952;</text>
+    </g>
+    <!-- up arrow -->
+    <path class="dash" d="M350 300V226" marker-end="url(#arr)"/>
+    <text class="tag" x="350" y="212" text-anchor="middle" style="font-size:15px">UP</text>
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 4: PUSH UP &amp; DOWN</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">We track elbow angle</text>
+  </g>
+</svg>
