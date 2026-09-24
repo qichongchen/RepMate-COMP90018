@@ -49,6 +49,7 @@ class FirestoreWorkoutDataSource @Inject constructor(
                 "userId" to userId,
                 "exercise" to session.exercise.name,
                 "startedAt" to session.startedAt,
+                "endedAt" to session.endedAt,
                 "repCount" to session.reps.size,
                 "averageScore" to averageScore,
                 "reps" to reps,

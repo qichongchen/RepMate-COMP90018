@@ -27,6 +27,7 @@ class RoomSessionRepositoryTest {
             id = "session-1",
             exercise = ExerciseType.SQUAT,
             startedAt = 1000L,
+            endedAt = 5000L,
             reps = listOf(
                 RepScore(
                     repIndex = 1,
@@ -49,6 +50,7 @@ class RoomSessionRepositoryTest {
         assertEquals(1, result[0].reps.size)
         assertEquals(8.5f, result[0].reps[0].score)
         assertEquals(listOf("good depth"), result[0].reps[0].reasons)
+        assertEquals(5000L, result[0].endedAt)
     }
 
     @Test
@@ -97,6 +99,7 @@ class RoomSessionRepositoryTest {
             id = "session-1",
             exercise = ExerciseType.SQUAT,
             startedAt = 1000L,
+            endedAt = 3000L,
             reps = listOf(
                 RepScore(
                     repIndex = 1,
@@ -113,6 +116,7 @@ class RoomSessionRepositoryTest {
             id = "session-1",
             exercise = ExerciseType.SQUAT,
             startedAt = 1000L,
+            endedAt = 5000L,
             reps = listOf(
                 RepScore(
                     repIndex = 1,

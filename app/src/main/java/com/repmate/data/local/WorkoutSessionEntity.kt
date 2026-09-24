@@ -9,5 +9,6 @@ data class WorkoutSessionEntity(
     val id: String,
     val ownerId: String,
     val exercise: String,
-    val startedAt: Long
+    val startedAt: Long,
+    val endedAt: Long? = null
 )
