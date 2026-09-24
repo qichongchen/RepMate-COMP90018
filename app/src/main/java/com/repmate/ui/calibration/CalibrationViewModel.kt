@@ -8,15 +8,18 @@ import com.repmate.data.repo.CalibrationRepository
 import com.repmate.engine.CalibrationOutcome
 import com.repmate.engine.ExerciseType
 import com.repmate.sensors.SensorSource
+import com.repmate.ui.theme.WorkoutPreferences
 import com.repmate.ui.workout.RepFeedback
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -74,6 +77,7 @@ class CalibrationViewModel
     constructor(
         private val sensorSource: SensorSource,
         private val calibrationRepository: CalibrationRepository,
+        private val workoutPreferences: WorkoutPreferences,
         @ApplicationContext context: Context,
     ) : ViewModel() {
         private val _uiState =
@@ -81,6 +85,16 @@ class CalibrationViewModel
         val uiState: StateFlow<CalibrationUiState> = _uiState.asStateFlow()
 
         private val repFeedback = RepFeedback(context)
+
+        // StateFlows so the current setting is readable synchronously at rep-detection time, with
+        // no suspend call on the hot path. Eagerly so the stored value is already loaded by the
+        // first rep. Initial values must match WorkoutPreferences' own defaults.
+        private val hapticFeedbackEnabled =
+            workoutPreferences.isHapticFeedbackEnabled
+                .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+        private val spokenRepCountEnabled =
+            workoutPreferences.isSpokenRepCountEnabled
+                .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
         // Same pattern as ForgotPasswordViewModel.onInitialEmail: applied once, from whatever the
         // nav route actually parsed, then ignored on every later recomposition.
@@ -142,7 +156,11 @@ class CalibrationViewModel
                                 "rep ${capture.reps.size}: duration ${rep.endMs - rep.startMs} ms, " +
                                     "amplitude %.2f, gap after previous ${gapMs?.let { "$it ms" } ?: "-"}".format(rep.amplitude),
                             )
-                            repFeedback.onRepDetected(capture.reps.size)
+                            repFeedback.onRepDetected(
+                                capture.reps.size,
+                                hapticFeedbackEnabled.value,
+                                spokenRepCountEnabled.value,
+                            )
                             restartNoRepHint()
                         }
                         _uiState.update { state ->

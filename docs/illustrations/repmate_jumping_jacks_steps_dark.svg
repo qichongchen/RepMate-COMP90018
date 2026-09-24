@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <style>
+      .fig{stroke:#FFFFFF;stroke-width:9;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .head{fill:#FFFFFF}
+      .num{font:700 26px 'JetBrains Mono','Courier New',Courier,monospace;fill:#0d0d0d}
+      .title{font:700 17px 'JetBrains Mono','Courier New',Courier,monospace;fill:#FFFFFF;letter-spacing:.5px}
+      .sub{font:400 13px 'JetBrains Mono','Courier New',Courier,monospace;fill:#FFFFFF}
+      .tag{font:700 12px 'JetBrains Mono','Courier New',Courier,monospace;fill:#FFFFFF}
+      .dash{stroke:#FFFFFF;stroke-width:3;fill:none;stroke-dasharray:2 7;stroke-linecap:round}
+      .ground{stroke:#FFFFFF;stroke-width:1.5;stroke-linecap:round}
+      .pocket{fill:#0d0d0d;stroke:#FFFFFF;stroke-width:3;stroke-linejoin:round}
+      .lip{stroke:#FFFFFF;stroke-width:4;stroke-linecap:round}
+      .thin{fill:none;stroke:#FFFFFF;stroke-width:2}
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#FFFFFF"/>
+    </marker>
+    <symbol id="phone" viewBox="0 0 26 44">
+      <rect x="1.5" y="1.5" width="23" height="41" rx="4.5" fill="#0d0d0d" stroke="#FFFFFF" stroke-width="3"/>
+      <line x1="4" y1="7" x2="22" y2="7" stroke="#FFFFFF" stroke-width="1.5"/>
+      <line x1="4" y1="36" x2="22" y2="36" stroke="#FFFFFF" stroke-width="1.5"/>
+      <path d="M13 28C6 23 7 16 10.5 16C12 16 13 17.5 13 17.5C13 17.5 14 16 15.5 16C19 16 20 23 13 28z" fill="#FFFFFF"/>
+      <circle cx="13" cy="39.5" r="1.6" fill="#FFFFFF"/>
+    </symbol>
+    <clipPath id="insetClip"><circle cx="72" cy="200" r="46"/></clipPath>
+  </defs>
+
+  <!-- Sheet + dividers -->
+  <rect width="800" height="800" fill="#0d0d0d"/>
+  <rect x="1" y="1" width="798" height="798" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <line x1="400" y1="0" x2="400" y2="800" stroke="#FFFFFF" stroke-width="1.5"/>
+  <line x1="0" y1="400" x2="800" y2="400" stroke="#FFFFFF" stroke-width="1.5"/>
+
+  <!-- ========== PANEL 1 ========== -->
+  <g transform="translate(10,0)">
+    <circle cx="30" cy="34" r="22" fill="#FFFFFF"/>
+    <text class="num" x="30" y="43" text-anchor="middle">1</text>
+    <line class="ground" x1="90" y1="310" x2="290" y2="310"/>
+
+    <circle class="head" cx="190" cy="95" r="22"/>
+    <path class="fig" d="M190 117V215"/>
+    <path class="fig" d="M160 308L190 215L220 308"/>
+    <path class="fig" d="M190 142L150 212"/>
+    <path class="fig" d="M190 142L232 172L246 132"/>
+    <use href="#phone" x="234" y="86" width="26" height="44"/>
+    <circle cx="246" cy="132" r="6" fill="#FFFFFF"/>
+    <path d="M270 82l10-8M274 104h13M264 68l4-12" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 1: GRAB YOUR PHONE</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Hold it and stand tall</text>
+  </g>
+
+  <!-- ========== PANEL 2 ========== -->
+  <g transform="translate(410,0)">
+    <circle cx="30" cy="34" r="22" fill="#FFFFFF"/>
+    <text class="num" x="30" y="43" text-anchor="middle">2</text>
+    <line class="ground" x1="90" y1="310" x2="290" y2="310"/>
+
+    <!-- start position (outline only) -->
+    <rect x="236" y="88" width="22" height="40" rx="4" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <path class="dash" d="M262 112Q302 172 226 214" marker-end="url(#arr)"/>
+
+    <circle class="head" cx="190" cy="95" r="22"/>
+    <path class="fig" d="M190 117V215"/>
+    <path class="fig" d="M160 308L190 215L220 308"/>
+    <path class="fig" d="M190 142L150 212"/>
+    <use href="#phone" x="194" y="210" width="22" height="38"/>
+    <rect class="pocket" x="188" y="236" width="34" height="38" rx="5"/>
+    <line class="lip" x1="188" y1="236" x2="222" y2="236"/>
+    <path class="fig" d="M190 142L230 176L214 212"/>
+    <circle cx="214" cy="212" r="6" fill="#FFFFFF"/>
+
+    <!-- close-up inset -->
+    <circle cx="72" cy="200" r="48" fill="#0d0d0d" stroke="#FFFFFF" stroke-width="2"/>
+    <g clip-path="url(#insetClip)">
+      <use href="#phone" x="58" y="166" width="28" height="48"/>
+      <rect class="pocket" x="48" y="198" width="48" height="50" rx="6"/>
+      <line class="lip" x1="48" y1="198" x2="96" y2="198"/>
+      <path d="M106 166V188" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" marker-end="url(#arr)"/>
+    </g>
+    <text class="tag" x="72" y="266" text-anchor="middle">CLOSE-UP</text>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 2: POCKET IT</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Slide it fully into a front pocket</text>
+  </g>
+
+  <!-- ========== PANEL 3 ========== -->
+  <g transform="translate(10,400)">
+    <circle cx="30" cy="34" r="22" fill="#FFFFFF"/>
+    <text class="num" x="30" y="43" text-anchor="middle">3</text>
+    <line class="ground" x1="90" y1="310" x2="290" y2="310"/>
+
+    <circle class="head" cx="190" cy="95" r="22"/>
+    <path class="fig" d="M190 117V215"/>
+    <path class="fig" d="M183 308L190 215L197 308"/>
+    <!-- pocket with bulge -->
+    <path class="pocket" d="M186 236H220Q232 256 220 276Q218 280 212 280H192Q186 280 186 274Z"/>
+    <line class="lip" x1="186" y1="236" x2="220" y2="236"/>
+    <rect class="thin" x="193" y="243" width="20" height="30" rx="3"/>
+    <!-- arms relaxed at sides -->
+    <path class="fig" d="M190 142L164 180L160 214"/>
+    <path class="fig" d="M190 142L216 180L220 210"/>
+    <!-- feet-together cue -->
+    <path d="M140 296H168" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" marker-end="url(#arr)"/>
+    <path d="M240 296H212" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" marker-end="url(#arr)"/>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 3: GET READY</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Feet together</text>
+  </g>
+
+  <!-- ========== PANEL 4 ========== -->
+  <g transform="translate(410,400)">
+    <circle cx="30" cy="34" r="22" fill="#FFFFFF"/>
+    <text class="num" x="30" y="43" text-anchor="middle">4</text>
+    <line class="ground" x1="30" y1="310" x2="290" y2="310"/>
+
+    <!-- ghosted feet-together silhouette -->
+    <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="62" cy="194" r="10"/>
+      <path d="M62 206V258M62 216L54 250M62 216L70 250M62 258L58 306M62 258L66 306"/>
+    </g>
+    <text class="tag" x="62" y="328" text-anchor="middle" style="font-size:10px">CLOSE</text>
+
+    <!-- open/close cycle arrow -->
+    <path class="dash" d="M84 226Q118 190 152 226" marker-end="url(#arr)"/>
+
+    <path d="M8 0L-7 -7L-7 7z" fill="#FFFFFF" transform="translate(84,226) rotate(133)"/>
+
+    <!-- jumping jack pose -->
+    <circle class="head" cx="200" cy="106" r="20"/>
+    <path class="fig" d="M200 126V215"/>
+    <path class="fig" d="M138 84L200 152L262 84"/>
+    <path class="fig" d="M160 308L200 215L240 308"/>
+    <g transform="translate(222,260) rotate(-23)">
+      <path class="pocket" d="M-14 -17H14Q22 0 14 17H-14Z"/>
+      <line class="lip" x1="-14" y1="-17" x2="14" y2="-17"/>
+      <rect class="thin" x="-8" y="-11" width="16" height="24" rx="2"/>
+    </g>
+    <!-- motion ticks -->
+    <path d="M124 80l-10-4M128 68l-6-9M276 80l10-4M272 68l6-9M146 318h-12M254 318h12" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+    <text class="tag" x="200" y="328" text-anchor="middle" style="font-size:10px">OPEN</text>
+
+    <!-- beat pulse -->
+    <circle cx="330" cy="122" r="31" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="3 4"/>
+    <circle cx="330" cy="122" r="23" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <circle cx="330" cy="122" r="15" fill="#FFFFFF"/>
+    <g fill="#0d0d0d" stroke="#0d0d0d" stroke-linecap="round">
+      <ellipse cx="326" cy="128" rx="4" ry="3" stroke="none"/>
+      <path d="M329.5 127V113L336 116" fill="none" stroke-width="2"/>
+    </g>
+    <text class="tag" x="330" y="172" text-anchor="middle">52 BPM</text>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 4: JUMP TO THE BEAT</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">One jack per beep &#183; 52 BPM</text>
+  </g>
+</svg>

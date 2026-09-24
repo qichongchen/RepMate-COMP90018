@@ -9,6 +9,7 @@ import com.repmate.safety.SafetyCheckInPreferences
 import com.repmate.safety.SafetyContact
 import com.repmate.ui.auth.accountDisplayFor
 import com.repmate.ui.theme.ThemePreferences
+import com.repmate.ui.theme.WorkoutPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,8 @@ import javax.inject.Inject
 
 /**
  * Everything [ProfileScreen] renders: the header (real, derived from [FirebaseAuth]), the dark
- * theme toggle (real, backed by [ThemePreferences]), [ProfileUiState.sessionsCount] and
+ * theme toggle (real, backed by [ThemePreferences]), the haptic feedback and spoken rep count
+ * toggles (real, backed by [WorkoutPreferences]), [ProfileUiState.sessionsCount] and
  * [ProfileUiState.totalReps] (real, derived from [SessionRepository.recent]), and the remaining
  * rows below, which are static placeholders for this first pass -- see the TODO on each
  * placeholder field/row for what it should read from once that data source exists.
@@ -38,11 +40,11 @@ data class ProfileUiState(
     val totalReps: Int = 0,
     // TODO(data.local): still a fixed placeholder, unlike the two counts above.
     val averageScore: Float = 8.1f,
-    // TODO(data.local / settings): both toggles are display-only placeholders (see ProfileScreen's
-    // non-interactive Switches) until a real settings store exists to read/write them from.
+    /** Real -- mirrors [WorkoutPreferences.isHapticFeedbackEnabled]. */
     val hapticFeedbackEnabled: Boolean = true,
+    /** Real -- mirrors [WorkoutPreferences.isSpokenRepCountEnabled]. */
     val spokenRepCountEnabled: Boolean = false,
-    /** Real, unlike the two toggles above -- mirrors [ThemePreferences.isDarkThemeEnabled]. */
+    /** Real -- mirrors [ThemePreferences.isDarkThemeEnabled]. */
     val darkThemeEnabled: Boolean = true,
     /** Real -- mirrors [SafetyCheckInPreferences.isEnabled]. Turning this on from [ProfileScreen]
      * goes through a disclaimer and a permission request first; see its KDoc. */
@@ -54,8 +56,8 @@ data class ProfileUiState(
 )
 
 /**
- * Backs [ProfileScreen]. The header, sign-out, the dark theme toggle, and the two session stats
- * are real; everything else in [ProfileUiState] is a fixed placeholder, per the explicit scoping
+ * Backs [ProfileScreen]. The header, sign-out, the dark theme, haptic feedback and spoken rep
+ * count toggles, and the two session stats are real; everything else in [ProfileUiState] is a fixed placeholder, per the explicit scoping
  * for this screen's first pass -- see the TODOs on [ProfileUiState] for what each one should
  * eventually read from.
  */
@@ -65,6 +67,7 @@ class ProfileViewModel
     constructor(
         private val firebaseAuth: FirebaseAuth,
         private val themePreferences: ThemePreferences,
+        private val workoutPreferences: WorkoutPreferences,
         private val sessionRepository: SessionRepository,
         private val safetyCheckInPreferences: SafetyCheckInPreferences,
         private val checkInScheduler: CheckInScheduler,
@@ -85,6 +88,19 @@ class ProfileViewModel
             viewModelScope.launch {
                 themePreferences.isDarkThemeEnabled.collect { enabled ->
                     _uiState.update { it.copy(darkThemeEnabled = enabled) }
+                }
+            }
+
+            // Same reasoning as the dark theme toggle above: DataStore is the source of truth, and
+            // the workout screens read the same flows to decide whether to buzz/speak per rep.
+            viewModelScope.launch {
+                workoutPreferences.isHapticFeedbackEnabled.collect { enabled ->
+                    _uiState.update { it.copy(hapticFeedbackEnabled = enabled) }
+                }
+            }
+            viewModelScope.launch {
+                workoutPreferences.isSpokenRepCountEnabled.collect { enabled ->
+                    _uiState.update { it.copy(spokenRepCountEnabled = enabled) }
                 }
             }
 
@@ -134,6 +150,14 @@ class ProfileViewModel
             viewModelScope.launch {
                 themePreferences.setDarkThemeEnabled(enabled)
             }
+        }
+
+        fun onHapticFeedbackToggled(enabled: Boolean) {
+            viewModelScope.launch { workoutPreferences.setHapticFeedbackEnabled(enabled) }
+        }
+
+        fun onSpokenRepCountToggled(enabled: Boolean) {
+            viewModelScope.launch { workoutPreferences.setSpokenRepCountEnabled(enabled) }
         }
 
         /**

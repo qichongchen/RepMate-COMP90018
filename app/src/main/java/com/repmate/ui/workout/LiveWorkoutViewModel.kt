@@ -20,16 +20,19 @@ import com.repmate.engine.WorkoutSession
 import com.repmate.safety.CheckInScheduler
 import com.repmate.safety.SafetyCheckInPreferences
 import com.repmate.sensors.SensorSource
+import com.repmate.ui.theme.WorkoutPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
@@ -69,6 +72,7 @@ class LiveWorkoutViewModel
         private val sessionRepository: SessionRepository,
         private val safetyCheckInPreferences: SafetyCheckInPreferences,
         private val checkInScheduler: CheckInScheduler,
+        private val workoutPreferences: WorkoutPreferences,
         @ApplicationContext context: Context,
     ) : ViewModel() {
         private val sessionId = UUID.randomUUID().toString()
@@ -80,6 +84,16 @@ class LiveWorkoutViewModel
 
         private val formScorer = FormScorer()
         private val repFeedback = RepFeedback(context)
+
+        // StateFlows so the current setting is readable synchronously at rep-detection time, with
+        // no suspend call on the hot path. Eagerly so the stored value is already loaded by the
+        // first rep. Initial values must match WorkoutPreferences' own defaults.
+        private val hapticFeedbackEnabled =
+            workoutPreferences.isHapticFeedbackEnabled
+                .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+        private val spokenRepCountEnabled =
+            workoutPreferences.isSpokenRepCountEnabled
+                .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
         private val _uiState = MutableStateFlow(LiveWorkoutUiState())
         val uiState: StateFlow<LiveWorkoutUiState> = _uiState.asStateFlow()
@@ -185,7 +199,7 @@ class LiveWorkoutViewModel
                 "rep ${scoredReps.size}: duration ${repEvent.endMs - repEvent.startMs} ms, " +
                     "amplitude %.2f, score %.1f".format(repEvent.amplitude, score.score),
             )
-            repFeedback.onRepDetected(scoredReps.size)
+            repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
             _uiState.update { it.copy(repCount = scoredReps.size, lastRepScore = score) }
         }
 

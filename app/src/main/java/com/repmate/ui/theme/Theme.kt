@@ -4,6 +4,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 private val RepMateDarkColorScheme = darkColorScheme(
@@ -31,6 +33,17 @@ private val RepMateLightColorScheme = lightColorScheme(
 )
 
 /**
+ * Whether the enclosing [RepMateTheme] is dark, for the rare composable that needs to pick a
+ * light/dark *resource* (e.g. `ExerciseTutorialDialog`'s illustrations) rather than a color.
+ *
+ * Needed because the app's dark mode is a plain Compose flag (Profile's toggle ->
+ * [ThemePreferences] -> `MainActivity` -> [RepMateTheme]), not the system night-mode
+ * configuration: `drawable-night/` and `isSystemInDarkTheme()` follow the phone's setting, which
+ * can disagree with the in-app toggle. Static because it only changes when the whole theme does.
+ */
+val LocalRepMateDarkTheme = staticCompositionLocalOf { true }
+
+/**
  * RepMate's Material 3 theme: charcoal-and-lime dark mode by default, with a full light
  * variant available for the rare screen/user that wants it.
  *
@@ -48,10 +61,12 @@ fun RepMateTheme(
 ) {
     val colorScheme = if (darkTheme) RepMateDarkColorScheme else RepMateLightColorScheme
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = RepMateShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalRepMateDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = RepMateShapes,
+            content = content
+        )
+    }
 }
