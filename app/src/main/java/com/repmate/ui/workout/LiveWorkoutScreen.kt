@@ -33,6 +33,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +57,7 @@ import com.repmate.engine.RepPhase
 import com.repmate.engine.RepScore
 import com.repmate.ui.audio.JumpingJackMetronome
 import com.repmate.ui.components.RepMateButton
+import com.repmate.ui.components.ScreenLockOverlay
 import com.repmate.ui.components.displayLabel
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
@@ -70,6 +74,10 @@ import java.util.Locale
  * this one to always be pure black regardless of the user's light/dark preference, which has
  * since been reversed; nothing here overrides the theme anymore.
  *
+ * The lock button in the bottom row is a pocket-safety lock -- see [ScreenLockOverlay]. Its state
+ * is local `remember` state here, not part of [LiveWorkoutUiState], so the screen always opens
+ * unlocked.
+ *
  * @param exerciseType parsed by the caller (`NavGraph.kt`) from the `live_workout/{exerciseType}`
  *   route, the same pattern `CalibrationScreen` uses.
  * @param onWorkoutFinished invoked once, with the session's id, once "End workout" has actually
@@ -83,6 +91,7 @@ fun LiveWorkoutScreen(
     viewModel: LiveWorkoutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var screenLocked by remember { mutableStateOf(false) }
 
     LaunchedEffect(exerciseType) {
         viewModel.onExerciseType(exerciseType)
@@ -96,6 +105,8 @@ fun LiveWorkoutScreen(
         uiState = uiState,
         onPauseResumeClicked = viewModel::onPauseResumeClicked,
         onEndWorkoutClicked = viewModel::onEndWorkoutClicked,
+        screenLocked = screenLocked,
+        onScreenLockToggled = { screenLocked = !screenLocked },
         modifier = modifier,
     )
 }
@@ -105,58 +116,70 @@ private fun LiveWorkoutContent(
     uiState: LiveWorkoutUiState,
     onPauseResumeClicked: () -> Unit,
     onEndWorkoutClicked: () -> Unit,
+    screenLocked: Boolean,
+    onScreenLockToggled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (uiState.exercise == ExerciseType.JUMPING_JACK) {
         JumpingJackMetronomeEffect()
     }
 
-    Column(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(horizontal = 24.dp, vertical = 24.dp),
+    ScreenLockOverlay(
+        screenLocked = screenLocked,
+        onScreenLockToggled = onScreenLockToggled,
+        scrimColor = MaterialTheme.colorScheme.scrim,
+        iconTint = MaterialTheme.colorScheme.onBackground,
+        outlineColor = MaterialTheme.colorScheme.outline,
+        modifier = modifier.fillMaxSize(),
     ) {
-        TopRow(exercise = uiState.exercise, elapsedMillis = uiState.elapsedMillis)
-
-        if (uiState.exercise == ExerciseType.JUMPING_JACK) {
-            Spacer(modifier = Modifier.height(16.dp))
-            JumpingJackBeatRow()
-        }
-
         Column(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
         ) {
-            RepProgressRing(repCount = uiState.repCount, progressFraction = uiState.phase.progressFraction())
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = "phase: ${uiState.phase.name.lowercase(Locale.US)}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
-                FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            LastRepFeedbackBox(repCount = uiState.repCount, lastRepScore = uiState.lastRepScore)
-        }
+            TopRow(exercise = uiState.exercise, elapsedMillis = uiState.elapsedMillis)
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PauseResumeButton(isPaused = uiState.isPaused, onClick = onPauseResumeClicked)
-            RepMateButton(
-                text = "End workout",
-                onClick = onEndWorkoutClicked,
-                modifier = Modifier.weight(1f),
-            )
+            if (uiState.exercise == ExerciseType.JUMPING_JACK) {
+                Spacer(modifier = Modifier.height(16.dp))
+                JumpingJackBeatRow()
+            }
+
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                RepProgressRing(repCount = uiState.repCount, progressFraction = uiState.phase.progressFraction())
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "phase: ${uiState.phase.name.lowercase(Locale.US)}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                    FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
+                    FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                LastRepFeedbackBox(repCount = uiState.repCount, lastRepScore = uiState.lastRepScore)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PauseResumeButton(isPaused = uiState.isPaused, onClick = onPauseResumeClicked)
+                RepMateButton(
+                    text = "End workout",
+                    onClick = onEndWorkoutClicked,
+                    modifier = Modifier.weight(1f),
+                )
+                ScreenLockButton()
+            }
         }
     }
 }
@@ -394,7 +417,7 @@ private val SQUAT_PREVIEW_STATE =
 @Composable
 private fun LiveWorkoutSquatLightPreview() {
     RepMateTheme(darkTheme = false) {
-        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {})
+        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -402,7 +425,7 @@ private fun LiveWorkoutSquatLightPreview() {
 @Composable
 private fun LiveWorkoutSquatDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {})
+        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -428,7 +451,7 @@ private val JUMPING_JACK_PAUSED_PREVIEW_STATE =
 @Composable
 private fun LiveWorkoutJumpingJackPausedLightPreview() {
     RepMateTheme(darkTheme = false) {
-        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {})
+        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -436,6 +459,20 @@ private fun LiveWorkoutJumpingJackPausedLightPreview() {
 @Composable
 private fun LiveWorkoutJumpingJackPausedDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {})
+        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
+    }
+}
+
+@Preview(name = "Squat - Screen locked - Dark", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun LiveWorkoutSquatLockedDarkPreview() {
+    RepMateTheme(darkTheme = true) {
+        LiveWorkoutContent(
+            uiState = SQUAT_PREVIEW_STATE,
+            onPauseResumeClicked = {},
+            onEndWorkoutClicked = {},
+            screenLocked = true,
+            onScreenLockToggled = {},
+        )
     }
 }

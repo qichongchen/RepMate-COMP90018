@@ -57,11 +57,11 @@ import com.repmate.ui.theme.RepMateTheme
  * Split into this stateful wrapper and the stateless [ProfileContent] below, same reasoning as
  * every other screen in this app: previews render from a plain [ProfileUiState], no Hilt required.
  *
- * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Dark
- * theme" toggle, "Recalibrate", and the safety check-in section (toggle + emergency contact) are
- * real -- the stats numbers, "Haptic feedback"/"Spoken rep count", and the "Units"/"Friends" rows
- * are static placeholders. See the TODOs on [ProfileUiState] for what each should eventually read
- * from.
+ * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Haptic
+ * feedback"/"Spoken rep count"/"Dark theme" toggles, "Recalibrate", and the safety check-in
+ * section (toggle + emergency contact) are real -- the average score and the "Friends" row are
+ * static placeholders. See the TODO on [ProfileUiState.averageScore] for what it should
+ * eventually read from.
  *
  * ## Safety check-in
  * Turning the toggle on doesn't call [ProfileViewModel.onSafetyCheckInToggled] directly -- it
@@ -108,6 +108,8 @@ fun ProfileScreen(
     ProfileContent(
         uiState = uiState,
         onSignOutClicked = viewModel::onSignOutClicked,
+        onHapticFeedbackToggled = viewModel::onHapticFeedbackToggled,
+        onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
         onRecalibrateClick = onRecalibrateClick,
         onSafetyCheckInToggled = { turningOn ->
@@ -173,6 +175,8 @@ fun ProfileScreen(
 private fun ProfileContent(
     uiState: ProfileUiState,
     onSignOutClicked: () -> Unit,
+    onHapticFeedbackToggled: (Boolean) -> Unit,
+    onSpokenRepCountToggled: (Boolean) -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
     onRecalibrateClick: () -> Unit,
     onSafetyCheckInToggled: (Boolean) -> Unit = {},
@@ -211,18 +215,23 @@ private fun ProfileContent(
         }
 
         SettingsSection(label = "preferences") {
-            SettingsToggleRow(label = "Haptic feedback", checked = uiState.hapticFeedbackEnabled)
+            SettingsToggleRow(
+                label = "Haptic feedback",
+                checked = uiState.hapticFeedbackEnabled,
+                onCheckedChange = onHapticFeedbackToggled,
+            )
             SettingsDivider()
-            SettingsToggleRow(label = "Spoken rep count", checked = uiState.spokenRepCountEnabled)
+            SettingsToggleRow(
+                label = "Spoken rep count",
+                checked = uiState.spokenRepCountEnabled,
+                onCheckedChange = onSpokenRepCountToggled,
+            )
             SettingsDivider()
-            // The one real toggle in this section -- see ProfileScreen's KDoc.
             SettingsToggleRow(
                 label = "Dark theme",
                 checked = uiState.darkThemeEnabled,
                 onCheckedChange = onDarkThemeToggled,
             )
-            SettingsDivider()
-            SettingsNavigationRow(label = "Units")
             SettingsDivider()
             SettingsNavigationRow(label = "Recalibrate", onClick = onRecalibrateClick)
         }
@@ -369,10 +378,8 @@ private fun SettingsDivider(modifier: Modifier = Modifier) {
  * A settings row with a trailing [Switch]. Leaving [onCheckedChange] null (the default) is
  * Compose's documented pattern for a non-interactive [Switch] -- it renders [checked]'s value
  * without responding to taps or drags, unlike passing a no-op lambda, which would still let the
- * thumb visually drag and then snap back. That's what every row still calling this without
- * [onCheckedChange] is: a placeholder for this first pass -- see the TODO on the matching
- * [ProfileUiState] field. "Dark theme" passes a real [onCheckedChange] and is the one row here
- * that's actually wired up.
+ * thumb visually drag and then snap back. Every toggle on this screen now passes a real
+ * [onCheckedChange]; the null default stays for any future placeholder row.
  *
  * Explicit checked-state colors, set once here so every toggle on this screen matches: Material
  * 3's own [SwitchDefaults.colors] default checkedThumbColor is `colorScheme.onPrimary`, which in
@@ -537,6 +544,8 @@ private fun ProfileScreenLightPreview() {
         ProfileContent(
             uiState = PREVIEW_STATE,
             onSignOutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             onDarkThemeToggled = {},
             onRecalibrateClick = {},
         )
@@ -550,6 +559,8 @@ private fun ProfileScreenDarkPreview() {
         ProfileContent(
             uiState = PREVIEW_STATE,
             onSignOutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             onDarkThemeToggled = {},
             onRecalibrateClick = {},
         )

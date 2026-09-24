@@ -17,6 +17,7 @@ import com.repmate.pose.elbowAngleDegrees
 import com.repmate.pose.trackingState
 import com.repmate.safety.CheckInScheduler
 import com.repmate.safety.SafetyCheckInPreferences
+import com.repmate.ui.theme.WorkoutPreferences
 import com.repmate.ui.workout.RepFeedback
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,10 +25,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
@@ -71,12 +74,23 @@ class PushupWorkoutViewModel
         private val sessionRepository: SessionRepository,
         private val safetyCheckInPreferences: SafetyCheckInPreferences,
         private val checkInScheduler: CheckInScheduler,
+        private val workoutPreferences: WorkoutPreferences,
         @ApplicationContext context: Context,
     ) : ViewModel() {
         private val sessionId = UUID.randomUUID().toString()
         private val startedAtWallClockMs = System.currentTimeMillis()
 
         private val repFeedback = RepFeedback(context)
+
+        // StateFlows so the current setting is readable synchronously at rep-detection time, with
+        // no suspend call on the hot path. Eagerly so the stored value is already loaded by the
+        // first rep. Initial values must match WorkoutPreferences' own defaults.
+        private val hapticFeedbackEnabled =
+            workoutPreferences.isHapticFeedbackEnabled
+                .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+        private val spokenRepCountEnabled =
+            workoutPreferences.isSpokenRepCountEnabled
+                .stateIn(viewModelScope, SharingStarted.Eagerly, false)
         private val armLock = ArmLock()
         private val repDetector = PushupRepDetector()
 
@@ -142,7 +156,7 @@ class PushupWorkoutViewModel
                 )
             scoredReps += score
             Log.i(TAG, "push-up rep ${scoredReps.size}: tempo %.1fs".format(tempoSeconds))
-            repFeedback.onRepDetected(scoredReps.size)
+            repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
         }
 
         /** Resets the count and arm lock for a fresh set -- used if the camera is re-bound. */

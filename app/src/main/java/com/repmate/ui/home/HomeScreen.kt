@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +40,7 @@ import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
 import com.repmate.ui.components.ExerciseChip
 import com.repmate.ui.components.displayLabel
+import com.repmate.ui.components.icon
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
@@ -341,10 +341,8 @@ private fun LeaderboardCard(
     }
 }
 
-// TODO: same placeholder icon (FitnessCenter) for all three exercises for now, per request --
-// swap in distinct per-exercise icons once suitable ones are found, same as onboarding's page 1
-// icon was upgraded from a reused placeholder to a dedicated one.
-private fun ExerciseType.pickerIcon(): ImageVector = Icons.Filled.FitnessCenter
+@Composable
+private fun ExerciseType.pickerIcon(): ImageVector = icon()
 
 private fun formatScore(score: Float): String = String.format(Locale.US, "%.1f", score)
 
