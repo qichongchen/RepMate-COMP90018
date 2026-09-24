@@ -20,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +47,7 @@ import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.components.displayLabel
+import com.repmate.ui.components.icon
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
 
@@ -282,9 +282,7 @@ private fun ExercisePickerSection(
                     label = exerciseType.displayLabel(),
                     selected = exerciseType == selectedExercise,
                     onClick = { onExerciseSelected(exerciseType) },
-                    // Same placeholder icon for all three exercises as Home's picker, per its own
-                    // TODO -- swap in distinct per-exercise icons in both places together.
-                    icon = Icons.Filled.FitnessCenter,
+                    icon = exerciseType.icon(),
                 )
                 if (index != ExerciseType.entries.lastIndex) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -324,7 +322,12 @@ private fun SelectableRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = contentColor)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(24.dp),
+            )
             Spacer(modifier = Modifier.width(12.dp))
         }
         Text(label, style = MaterialTheme.typography.titleLarge, color = contentColor)
