@@ -63,6 +63,11 @@ class SyncingSessionRepository @Inject constructor(
                 return Result.failure(error)
             }
 
+        Log.d(
+            TAG,
+            "Fetched ${cloudSessions.size} sessions from Firestore: " +
+                    cloudSessions.map { it.id }
+        )
         var restoredCount = 0
 
         cloudSessions.forEach { cloudSession ->
@@ -70,12 +75,18 @@ class SyncingSessionRepository @Inject constructor(
                 session = cloudSession.toRoomSession(
                     ownerId = userId
                 ),
+
                 repScores = cloudSession.toRoomRepScores()
             )
 
             if (inserted) {
                 restoredCount++
             }
+
+            Log.d(
+                TAG,
+                "Session ${cloudSession.id}: inserted=$inserted"
+            )
         }
 
         Log.d(
