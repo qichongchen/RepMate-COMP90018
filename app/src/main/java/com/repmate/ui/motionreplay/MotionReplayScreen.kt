@@ -46,6 +46,7 @@ import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateCard
+import com.repmate.ui.components.displayLabel
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
 
@@ -562,13 +563,6 @@ private fun ReplayScrubber(
 
 /** `null` when [RepScore.rangePercent] is the "not measurable" sentinel (uncalibrated at scoring time). */
 private fun RepScore.rangePercentOrNull(): Int? = rangePercent.takeIf { it >= 0 }
-
-private fun ExerciseType.displayLabel(): String =
-    when (this) {
-        ExerciseType.SQUAT -> "Squat"
-        ExerciseType.PUSHUP -> "Push-up"
-        ExerciseType.JUMPING_JACK -> "Jumping Jack"
-    }
 
 private fun formatScore(score: Float): String = String.format(Locale.US, "%.1f", score)
 
