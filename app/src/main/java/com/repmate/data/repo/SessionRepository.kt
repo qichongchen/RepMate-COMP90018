@@ -1,6 +1,7 @@
 package com.repmate.data.repo
 
 import com.repmate.engine.WorkoutSession
+import com.repmate.engine.ExerciseType
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -84,4 +85,16 @@ interface SessionRepository {
      * Returns null if the session does not exist or does not belong to the current user.
      */
     suspend fun getById(id: String): WorkoutSession?
+
+    /**
+     * Returns the current user's highest session average
+     * for the specified exercise.
+     *
+     * Sessions without reps are excluded.
+     * Returns null if there is no valid session
+     * or no signed-in user.
+     */
+    suspend fun getMyBestScore(
+        exercise: ExerciseType
+    ): BestWorkoutScore?
 }
