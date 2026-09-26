@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <style>
+      .fig{stroke:#000;stroke-width:9;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      .head{fill:#000}
+      .num{font:700 26px 'JetBrains Mono','Courier New',Courier,monospace;fill:#FFF}
+      .title{font:700 17px 'JetBrains Mono','Courier New',Courier,monospace;fill:#000;letter-spacing:.5px}
+      .sub{font:400 13px 'JetBrains Mono','Courier New',Courier,monospace;fill:#000}
+      .tag{font:700 12px 'JetBrains Mono','Courier New',Courier,monospace;fill:#000}
+      .dash{stroke:#000;stroke-width:3;fill:none;stroke-dasharray:2 7;stroke-linecap:round}
+      .ground{stroke:#000;stroke-width:1.5;stroke-linecap:round}
+      .pocket{fill:#FFF;stroke:#000;stroke-width:3;stroke-linejoin:round}
+      .lip{stroke:#000;stroke-width:4;stroke-linecap:round}
+      .thin{fill:none;stroke:#000;stroke-width:2}
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#000"/>
+    </marker>
+    <symbol id="phone" viewBox="0 0 26 44">
+      <rect x="1.5" y="1.5" width="23" height="41" rx="4.5" fill="#FFF" stroke="#000" stroke-width="3"/>
+      <line x1="4" y1="7" x2="22" y2="7" stroke="#000" stroke-width="1.5"/>
+      <line x1="4" y1="36" x2="22" y2="36" stroke="#000" stroke-width="1.5"/>
+      <path d="M13 28C6 23 7 16 10.5 16C12 16 13 17.5 13 17.5C13 17.5 14 16 15.5 16C19 16 20 23 13 28z" fill="#000"/>
+      <circle cx="13" cy="39.5" r="1.6" fill="#000"/>
+    </symbol>
+    <clipPath id="insetClip"><circle cx="72" cy="200" r="46"/></clipPath>
+  </defs>
+
+  <!-- Sheet + dividers -->
+  <rect width="800" height="800" fill="#FFF"/>
+  <rect x="1" y="1" width="798" height="798" fill="none" stroke="#000" stroke-width="2"/>
+  <line x1="400" y1="0" x2="400" y2="800" stroke="#000" stroke-width="1.5"/>
+  <line x1="0" y1="400" x2="800" y2="400" stroke="#000" stroke-width="1.5"/>
+
+  <!-- ========== PANEL 1 ========== -->
+  <g transform="translate(10,0)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">1</text>
+    <line class="ground" x1="90" y1="310" x2="290" y2="310"/>
+
+    <circle class="head" cx="190" cy="95" r="22"/>
+    <path class="fig" d="M190 117V215"/>
+    <path class="fig" d="M160 308L190 215L220 308"/>
+    <path class="fig" d="M190 142L150 212"/>
+    <path class="fig" d="M190 142L232 172L246 132"/>
+    <use href="#phone" x="234" y="86" width="26" height="44"/>
+    <circle cx="246" cy="132" r="6" fill="#000"/>
+    <path d="M270 82l10-8M274 104h13M264 68l4-12" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 1: GRAB YOUR PHONE</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Hold it and stand tall</text>
+  </g>
+
+  <!-- ========== PANEL 2 ========== -->
+  <g transform="translate(410,0)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">2</text>
+    <line class="ground" x1="90" y1="310" x2="290" y2="310"/>
+
+    <!-- start position (outline only) -->
+    <rect x="236" y="88" width="22" height="40" rx="4" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <path class="dash" d="M262 112Q302 172 226 214" marker-end="url(#arr)"/>
+
+    <circle class="head" cx="190" cy="95" r="22"/>
+    <path class="fig" d="M190 117V215"/>
+    <path class="fig" d="M160 308L190 215L220 308"/>
+    <path class="fig" d="M190 142L150 212"/>
+    <use href="#phone" x="194" y="210" width="22" height="38"/>
+    <rect class="pocket" x="188" y="236" width="34" height="38" rx="5"/>
+    <line class="lip" x1="188" y1="236" x2="222" y2="236"/>
+    <path class="fig" d="M190 142L230 176L214 212"/>
+    <circle cx="214" cy="212" r="6" fill="#000"/>
+
+    <!-- close-up inset -->
+    <circle cx="72" cy="200" r="48" fill="#FFF" stroke="#000" stroke-width="2"/>
+    <g clip-path="url(#insetClip)">
+      <use href="#phone" x="58" y="166" width="28" height="48"/>
+      <rect class="pocket" x="48" y="198" width="48" height="50" rx="6"/>
+      <line class="lip" x1="48" y1="198" x2="96" y2="198"/>
+      <path d="M106 166V188" stroke="#000" stroke-width="3" stroke-linecap="round" marker-end="url(#arr)"/>
+    </g>
+    <text class="tag" x="72" y="266" text-anchor="middle">CLOSE-UP</text>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 2: POCKET IT</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Slide it fully into a front pocket</text>
+  </g>
+
+  <!-- ========== PANEL 3 ========== -->
+  <g transform="translate(10,400)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">3</text>
+    <line class="ground" x1="90" y1="310" x2="290" y2="310"/>
+
+    <circle class="head" cx="190" cy="95" r="22"/>
+    <path class="fig" d="M190 117V215"/>
+    <path class="fig" d="M152 308L190 215L228 308"/>
+    <!-- pocket with bulge -->
+    <path class="pocket" d="M192 236H228Q240 256 228 276Q226 280 220 280H198Q192 280 192 274Z"/>
+    <line class="lip" x1="192" y1="236" x2="228" y2="236"/>
+    <rect class="thin" x="200" y="243" width="20" height="30" rx="3"/>
+    <!-- hands free, relaxed at sides -->
+    <path class="fig" d="M190 142L158 178L150 212"/>
+    <path class="fig" d="M190 142L222 178L230 212"/>
+
+    <path class="dash" d="M284 258H246" marker-end="url(#arr)"/>
+    <text class="tag" x="292" y="262">SECURE</text>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 3: GET READY</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">Hands free, feet shoulder-width apart</text>
+  </g>
+
+  <!-- ========== PANEL 4 ========== -->
+  <g transform="translate(410,400)">
+    <circle cx="30" cy="34" r="22" fill="#000"/>
+    <text class="num" x="30" y="43" text-anchor="middle">4</text>
+    <!-- repeat icon -->
+    <path d="M352 36A14 14 0 1 1 338 22" stroke="#000" stroke-width="3" fill="none" stroke-linecap="round" marker-end="url(#arr)"/>
+    <text class="tag" x="338" y="70" text-anchor="middle" style="font-size:10px">REPEAT</text>
+    <line class="ground" x1="90" y1="310" x2="300" y2="310"/>
+
+    <!-- squat pose, side view -->
+    <circle class="head" cx="186" cy="156" r="22"/>
+    <path class="fig" d="M168 308H194"/>
+    <path class="fig" d="M170 308L206 262L140 246L172 180"/>
+    <path class="fig" d="M172 184L238 190"/>
+    <g transform="translate(173,254) rotate(14)">
+      <path class="pocket" d="M-15 -12H15Q22 0 15 12H-15Z"/>
+      <line class="lip" x1="-15" y1="-12" x2="15" y2="-12"/>
+      <rect class="thin" x="-9" y="-7" width="18" height="14" rx="2"/>
+    </g>
+
+    <!-- up / down cycle -->
+    <path class="dash" d="M292 292V152" marker-end="url(#arr)"/>
+    <text class="tag" x="292" y="138" text-anchor="middle" style="font-size:15px">UP</text>
+    <path class="dash" d="M306 146C352 180 352 262 306 292" marker-end="url(#arr)"/>
+    <text class="tag" x="336" y="326" text-anchor="middle">DOWN</text>
+
+    <text class="title" x="190" y="350" text-anchor="middle">STEP 4: SQUAT DOWN &amp; UP</text>
+    <text class="sub" x="190" y="374" text-anchor="middle">RepMate counts each rep for you</text>
+  </g>
+</svg>

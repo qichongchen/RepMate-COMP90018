@@ -41,6 +41,36 @@ android {
             "GOOGLE_WEB_CLIENT_ID",
             "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "REPLACE_WITH_FIREBASE_WEB_CLIENT_ID")}\"",
         )
+
+        buildConfigField(
+            "String",
+            "TEST_ACCOUNT_A_EMAIL",
+            "\"${localProperties.getProperty("TEST_ACCOUNT_A_EMAIL", "")}\"",
+        )
+
+        buildConfigField(
+            "String",
+            "TEST_ACCOUNT_A_PASSWORD",
+            "\"${localProperties.getProperty("TEST_ACCOUNT_A_PASSWORD", "")}\"",
+        )
+
+        buildConfigField(
+            "String",
+            "TEST_ACCOUNT_B_EMAIL",
+            "\"${localProperties.getProperty("TEST_ACCOUNT_B_EMAIL", "")}\"",
+        )
+
+        buildConfigField(
+            "String",
+            "TEST_ACCOUNT_B_PASSWORD",
+            "\"${localProperties.getProperty("TEST_ACCOUNT_B_PASSWORD", "")}\"",
+        )
+
+        buildConfigField(
+            "String",
+            "TEST_ACCOUNT_B_UID",
+            "\"${localProperties.getProperty("TEST_ACCOUNT_B_UID", "")}\"",
+        )
     }
 
     buildTypes {

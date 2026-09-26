@@ -60,6 +60,7 @@ import com.repmate.engine.PushupRepDetector
 import com.repmate.pose.Arm
 import com.repmate.pose.Tracking
 import com.repmate.ui.components.RepMateButton
+import com.repmate.ui.components.ScreenLockOverlay
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -79,6 +80,12 @@ import java.util.concurrent.Executors
  * uses for every exercise, just more load-bearing here since there is no glance-at-the-phone
  * fallback.
  *
+ * ## Screen lock
+ * The lock button beside "End workout" is a pocket-safety lock -- see [ScreenLockOverlay]. Named
+ * `screenLocked` rather than a bare `locked` so it can't be confused with
+ * [PushupWorkoutUiState.armLocked], the unrelated pose-tracking lock. Local `remember` state, not
+ * part of [PushupWorkoutUiState], so the screen always opens unlocked.
+ *
  * @param onWorkoutFinished invoked once, with the session's id, once "End workout" has actually
  *   saved it -- the caller decides what route that leads to (Motion Replay), same contract as
  *   `LiveWorkoutScreen`.
@@ -93,6 +100,7 @@ fun PushupWorkoutScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val inPreview = LocalInspectionMode.current
+    var screenLocked by remember { mutableStateOf(false) }
 
     var hasPermission by remember {
         mutableStateOf(
@@ -121,6 +129,8 @@ fun PushupWorkoutScreen(
             uiState = uiState,
             previewView = if (inPreview) null else previewView,
             onEndWorkoutClicked = viewModel::onEndWorkoutClicked,
+            screenLocked = screenLocked,
+            onScreenLockToggled = { screenLocked = !screenLocked },
             modifier = modifier,
         )
     } else {
@@ -227,67 +237,87 @@ private fun PushupWorkoutContent(
     uiState: PushupWorkoutUiState,
     previewView: PreviewView?,
     onEndWorkoutClicked: () -> Unit,
+    screenLocked: Boolean,
+    onScreenLockToggled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize()) {
-        if (previewView != null) {
-            AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-        } else {
-            // Design-time / preview only: no camera in an @Preview.
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
-        }
-
-        // A translucent scrim under the overlay text keeps it legible over whatever the camera
-        // sees, in both themes, without needing the screen to know anything about the preview's
-        // actual content.
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .safeDrawingPadding()
-                    .padding(24.dp),
-        ) {
-            TrackingBadge(tracking = uiState.tracking, armLocked = uiState.armLocked)
-
-            if (!uiState.armLocked) {
-                Spacer(modifier = Modifier.height(16.dp))
-                PlacementInstructions()
+    // Hardcoded white/black rather than theme colors, same as the rest of this overlay: it has to
+    // stay legible over the camera preview in both themes.
+    ScreenLockOverlay(
+        screenLocked = screenLocked,
+        onScreenLockToggled = onScreenLockToggled,
+        scrimColor = Color.Black,
+        iconTint = Color.White,
+        outlineColor = Color.White.copy(alpha = 0.6f),
+        modifier = modifier.fillMaxSize(),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (previewView != null) {
+                AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+            } else {
+                // Design-time / preview only: no camera in an @Preview.
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black))
             }
 
+            // A translucent scrim under the overlay text keeps it legible over whatever the camera
+            // sees, in both themes, without needing the screen to know anything about the preview's
+            // actual content.
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .safeDrawingPadding()
+                        .padding(24.dp),
             ) {
-                Text(
-                    text = uiState.repCount.toString(),
-                    style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White,
-                )
-                Text(
-                    text = "REPS",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "phase: ${uiState.phase.name.lowercase(Locale.US)}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                    FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
-                    FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
+                TrackingBadge(tracking = uiState.tracking, armLocked = uiState.armLocked)
+
+                if (!uiState.armLocked) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    PlacementInstructions()
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = uiState.repCount.toString(),
+                        style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                    Text(
+                        text = "REPS",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "phase: ${uiState.phase.name.lowercase(Locale.US)}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                        FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
+                        FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RepMateButton(
+                        text = "End workout",
+                        onClick = onEndWorkoutClicked,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ScreenLockButton()
                 }
             }
-
-            RepMateButton(
-                text = "End workout",
-                onClick = onEndWorkoutClicked,
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }
@@ -363,7 +393,13 @@ private val PREVIEW_STATE =
 @Composable
 private fun PushupWorkoutTrackingPreview() {
     RepMateTheme {
-        PushupWorkoutContent(uiState = PREVIEW_STATE, previewView = null, onEndWorkoutClicked = {})
+        PushupWorkoutContent(
+            uiState = PREVIEW_STATE,
+            previewView = null,
+            onEndWorkoutClicked = {},
+            screenLocked = false,
+            onScreenLockToggled = {},
+        )
     }
 }
 
@@ -375,6 +411,22 @@ private fun PushupWorkoutFindingArmPreview() {
             uiState = PushupWorkoutUiState(tracking = Tracking.TRACKING, armLocked = false),
             previewView = null,
             onEndWorkoutClicked = {},
+            screenLocked = false,
+            onScreenLockToggled = {},
+        )
+    }
+}
+
+@Preview(name = "Push-up workout - screen locked", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun PushupWorkoutScreenLockedPreview() {
+    RepMateTheme {
+        PushupWorkoutContent(
+            uiState = PREVIEW_STATE,
+            previewView = null,
+            onEndWorkoutClicked = {},
+            screenLocked = true,
+            onScreenLockToggled = {},
         )
     }
 }

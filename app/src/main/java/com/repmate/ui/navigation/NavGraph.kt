@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -30,6 +31,7 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
+import com.repmate.ui.ghostduel.GhostDuelScreen
 import com.repmate.ui.history.HistoryScreen
 import com.repmate.ui.history.SessionDetailScreen
 import com.repmate.ui.home.CalibrationGateViewModel
@@ -41,6 +43,8 @@ import com.repmate.ui.motionreplay.MotionReplayScreen
 import com.repmate.ui.profile.ProfileScreen
 import com.repmate.ui.profile.RecalibrateExercisePicker
 import com.repmate.ui.theme.RepMateTheme
+import com.repmate.ui.tutorial.ExerciseTutorialDialog
+import com.repmate.ui.tutorial.TutorialGateViewModel
 import com.repmate.ui.workout.LiveWorkoutScreen
 import com.repmate.ui.workout.pushup.PushupWorkoutScreen
 import kotlinx.coroutines.launch
@@ -73,6 +77,9 @@ object RepMateDestinations {
     const val HISTORY = "history"
     const val LEADERBOARD = "leaderboard"
     const val PROFILE = "profile"
+
+    /** Bare route, no arguments -- the friend/exercise picks happen on the screen itself, not carried in from the caller. Reached only from Home's Ghost Duel banner. */
+    const val GHOST_DUEL = "ghost_duel"
 
     const val ARG_EXERCISE_TYPE = "exerciseType"
     const val ARG_CALIBRATION_ENTRY_POINT = "entryPoint"
@@ -184,7 +191,46 @@ fun RepMateNavGraph(
     // exercise-chip tap and live_workout's own entry check, rather than each owning a separate
     // "is this exercise calibrated" mechanism.
     val calibrationGateViewModel: CalibrationGateViewModel = hiltViewModel()
+    // Same reasoning again: one tutorial gate for every exercise start path.
+    val tutorialGateViewModel: TutorialGateViewModel = hiltViewModel()
     val coroutineScope = rememberCoroutineScope()
+
+    // The exercise whose tutorial is showing (see startExercise below), or null. Saveable so a
+    // rotation mid-dialog doesn't silently drop the pick.
+    var pendingTutorialExercise by rememberSaveable { mutableStateOf<ExerciseType?>(null) }
+
+    // Where an exercise pick leads once any tutorial is out of the way: the calibration-gate
+    // branching. Only called from startExercise and the tutorial's "Continue" below, so there's
+    // exactly one copy of it rather than a second one drifting out of sync.
+    val routeToExercise: (ExerciseType) -> Unit = { exerciseType ->
+        if (exerciseType == ExerciseType.PUSHUP) {
+            // Push-ups skip the calibration gate entirely and go straight to their
+            // own camera workout screen -- there is no per-user profile to check
+            // yet (see CalibrationUiState.Unsupported, still shown if this exercise
+            // is ever reached through Calibration some other way, e.g. Profile's
+            // Recalibrate picker), and PUSHUP_WORKOUT isn't parameterised by
+            // exercise type the way LIVE_WORKOUT is, since it only ever means this
+            // one exercise.
+            navController.navigate(RepMateDestinations.PUSHUP_WORKOUT)
+        } else {
+            // Real logic, not a stub: this always resolves to CALIBRATION right now
+            // only because CalibrationGateViewModel's backing check is itself
+            // stubbed to always report false (no Room table for calibration
+            // profiles yet) -- see StubCalibrationRepository. The branch itself is
+            // real, so a chip tap for an already-calibrated exercise correctly goes
+            // straight to live_workout the moment that stub is replaced with a real
+            // query.
+            coroutineScope.launch {
+                val destination =
+                    if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
+                        RepMateDestinations.liveWorkout(exerciseType)
+                    } else {
+                        RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
+                    }
+                navController.navigate(destination)
+            }
+        }
+    }
 
     // The one place that decides "onboarding or home" after sign-up, log-in, or guest sign-in
     // all succeed -- so none of the three hardcodes a destination the way LogIn used to
@@ -200,6 +246,24 @@ fun RepMateNavGraph(
                 }
             navController.navigate(destination) {
                 popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+            }
+        }
+    }
+
+    // The one entry point for starting an exercise -- shared by Home's exercise chips and Ghost
+    // Duel's "Start Workout to Beat It" button. Shows ExerciseTutorialDialog first unless the user
+    // has opted out of it for this exercise; the dialog's "Continue" then hands on to
+    // routeToExercise. Gated here rather than in each screen's ViewModel so both paths share it:
+    // push-up's side-on camera placement matters for accuracy whichever button started it.
+    val startExercise: (ExerciseType) -> Unit = { exerciseType ->
+        // A fast double tap can land before the dialog draws; don't stack a second decision.
+        if (pendingTutorialExercise == null) {
+            coroutineScope.launch {
+                if (tutorialGateViewModel.hasOptedOutOfTutorial(exerciseType)) {
+                    routeToExercise(exerciseType)
+                } else {
+                    pendingTutorialExercise = exerciseType
+                }
             }
         }
     }
@@ -308,36 +372,18 @@ fun RepMateNavGraph(
 
             composable(RepMateDestinations.HOME) {
                 HomeScreen(
-                    onExerciseSelected = { exerciseType ->
-                        if (exerciseType == ExerciseType.PUSHUP) {
-                            // Push-ups skip the calibration gate entirely and go straight to their
-                            // own camera workout screen -- there is no per-user profile to check
-                            // yet (see CalibrationUiState.Unsupported, still shown if this exercise
-                            // is ever reached through Calibration some other way, e.g. Profile's
-                            // Recalibrate picker), and PUSHUP_WORKOUT isn't parameterised by
-                            // exercise type the way LIVE_WORKOUT is, since it only ever means this
-                            // one exercise.
-                            navController.navigate(RepMateDestinations.PUSHUP_WORKOUT)
-                        } else {
-                            // Real logic, not a stub: this always resolves to CALIBRATION right now
-                            // only because CalibrationGateViewModel's backing check is itself
-                            // stubbed to always report false (no Room table for calibration
-                            // profiles yet) -- see StubCalibrationRepository. The branch itself is
-                            // real, so a chip tap for an already-calibrated exercise correctly goes
-                            // straight to live_workout the moment that stub is replaced with a real
-                            // query.
-                            coroutineScope.launch {
-                                val destination =
-                                    if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {
-                                        RepMateDestinations.liveWorkout(exerciseType)
-                                    } else {
-                                        RepMateDestinations.calibration(exerciseType, CalibrationEntryPoint.EXERCISE_START)
-                                    }
-                                navController.navigate(destination)
-                            }
-                        }
-                    },
+                    onExerciseSelected = startExercise,
                     onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                    onGhostDuelClick = { navController.navigate(RepMateDestinations.GHOST_DUEL) },
+                )
+            }
+            composable(RepMateDestinations.GHOST_DUEL) {
+                GhostDuelScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onStartWorkoutClick = startExercise,
+                    // TODO: once a real friends-management screen exists (Jasper's work), point this at
+                    // that screen instead of Profile, and wire Profile's own "Friends" row the same way.
+                    onAddFriendClick = { navController.navigate(RepMateDestinations.PROFILE) },
                 )
             }
             composable(RepMateDestinations.HISTORY) {
@@ -470,6 +516,25 @@ fun RepMateNavGraph(
                 )
             }
         }
+    }
+
+    // Drawn over whichever screen started the exercise (Home or Ghost Duel). Only "Continue"
+    // proceeds, and only it persists "Don't show this again"; back just closes the dialog.
+    pendingTutorialExercise?.let { exerciseType ->
+        ExerciseTutorialDialog(
+            exerciseType = exerciseType,
+            showDismissCheckbox = true,
+            ctaLabel = "Continue",
+            onContinue = { dontShowAgainChecked ->
+                pendingTutorialExercise = null
+                coroutineScope.launch {
+                    // Written before routing so the next pick already sees it.
+                    if (dontShowAgainChecked) tutorialGateViewModel.optOutOfTutorial(exerciseType)
+                    routeToExercise(exerciseType)
+                }
+            },
+            onCancel = { pendingTutorialExercise = null },
+        )
     }
 }
 

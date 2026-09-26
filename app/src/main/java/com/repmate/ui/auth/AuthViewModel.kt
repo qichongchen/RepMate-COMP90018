@@ -2,6 +2,7 @@ package com.repmate.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
@@ -9,6 +10,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.GoogleAuthProvider
+import com.repmate.data.cloud.FirestoreUserProfileDataSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +62,7 @@ class AuthViewModel
     @Inject
     constructor(
         private val firebaseAuth: FirebaseAuth,
+        private val userProfileDataSource: FirestoreUserProfileDataSource,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AuthFormUiState())
         val uiState: StateFlow<AuthFormUiState> = _uiState.asStateFlow()
@@ -101,6 +104,7 @@ class AuthViewModel
             viewModelScope.launch {
                 try {
                     firebaseAuth.createUserWithEmailAndPassword(state.email, state.password).await()
+                    ensureUserProfile()
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {
@@ -135,6 +139,7 @@ class AuthViewModel
             viewModelScope.launch {
                 try {
                     firebaseAuth.signInWithEmailAndPassword(state.email, state.password).await()
+                    ensureUserProfile()
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthInvalidUserException) {
@@ -166,6 +171,7 @@ class AuthViewModel
                 try {
                     val credential = GoogleAuthProvider.getCredential(idToken, null)
                     firebaseAuth.signInWithCredential(credential).await()
+                    ensureUserProfile()
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseNetworkException) {
@@ -212,4 +218,16 @@ class AuthViewModel
 
         private fun validateExistingPassword(password: String): String? =
             if (password.isBlank()) "Enter your password." else null
+
+        private suspend fun ensureUserProfile() {
+            val result = userProfileDataSource.ensureCurrentUserProfile()
+
+            if (result.isFailure) {
+                Log.w(
+                    "AuthViewModel",
+                    "Authentication succeeded, but user profile creation failed",
+                    result.exceptionOrNull()
+                )
+            }
+        }
     }
