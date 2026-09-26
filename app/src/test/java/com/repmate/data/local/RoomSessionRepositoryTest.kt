@@ -225,6 +225,13 @@ private class FakeSessionDao : SessionDao {
         }
     }
 
+    override suspend fun getBestSessionScore(
+        ownerId: String,
+        exercise: String
+    ): BestSessionResult? {
+        return null
+    }
+
     override suspend fun getRepScores(
         sessionId: String
     ): List<RepScoreEntity> {
