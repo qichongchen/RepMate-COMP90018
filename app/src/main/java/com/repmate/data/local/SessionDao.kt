@@ -50,6 +50,28 @@ interface SessionDao {
     )
     suspend fun getRepScores(sessionId: String): List<RepScoreEntity>
 
+    @Query(
+        """
+    SELECT
+        AVG(rs.score) AS averageScore,
+        COUNT(*) AS repCount
+    FROM workout_sessions AS ws
+    INNER JOIN rep_scores AS rs
+        ON rs.sessionId = ws.id
+    WHERE ws.ownerId = :ownerId
+      AND ws.exercise = :exercise
+    GROUP BY ws.id
+    ORDER BY averageScore DESC,
+             repCount DESC,
+             ws.startedAt DESC
+    LIMIT 1
+    """
+    )
+    suspend fun getBestSessionScore(
+        ownerId: String,
+        exercise: String
+    ): BestSessionResult?
+
     @Query("DELETE FROM rep_scores WHERE sessionId = :sessionId")
     suspend fun deleteRepScores(sessionId: String)
 

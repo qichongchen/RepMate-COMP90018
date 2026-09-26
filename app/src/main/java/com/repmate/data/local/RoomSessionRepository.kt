@@ -1,6 +1,7 @@
 package com.repmate.data.local
 
 import com.repmate.data.repo.SessionRepository
+import com.repmate.data.repo.BestWorkoutScore
 import com.example.repmate.data.auth.AuthRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
@@ -132,5 +133,22 @@ class RoomSessionRepository @Inject constructor(
                     )
                 }
         }
+    }
+
+    override suspend fun getMyBestScore(
+        exercise: ExerciseType
+    ): BestWorkoutScore? {
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return null
+
+        val result = sessionDao.getBestSessionScore(
+            ownerId = ownerId,
+            exercise = exercise.name
+        ) ?: return null
+
+        return BestWorkoutScore(
+            score = result.averageScore,
+            reps = result.repCount
+        )
     }
 }
