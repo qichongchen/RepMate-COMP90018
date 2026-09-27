@@ -56,9 +56,9 @@ import java.util.Locale
  * workout to try to beat it. Reached only from Home's Ghost Duel banner (see `NavGraph.kt`'s
  * `HOME` -> `GHOST_DUEL` navigation).
  *
- * The comparison itself isn't wired up yet -- see [GhostDuelViewModel]'s KDoc -- so both sides of
- * the comparison card always render their "not available yet" box in this build. The picker rows
- * and "Start Workout to Beat It" button are fully real.
+ * The comparison displa./gradlew testDebugUnitTest the current user's local best score
+ * and the selected friend's published best score.
+ * Loading, missing scores and query failures are shown separately.
  *
  * Split into this stateful wrapper and the stateless [GhostDuelContent] below, same reasoning as
  * every other screen in this app: previews render from a plain [GhostDuelUiState], no Hilt
@@ -138,6 +138,9 @@ private fun GhostDuelContent(
                     yourBest = uiState.yourBest,
                     friendsBest = uiState.friendsBest,
                     friendName = selectedFriend?.displayName ?: "opponent",
+                    isScoreLoading = uiState.isScoreLoading,
+                    yourScoreError = uiState.yourScoreError,
+                    friendScoreError = uiState.friendScoreError,
                 )
                 RepMateButton(
                     text = "Start Workout to Beat It",
@@ -334,11 +337,15 @@ private fun SelectableRow(
     }
 }
 
+
 @Composable
 private fun ComparisonSection(
     yourBest: GhostDuelBestScore?,
     friendsBest: GhostDuelBestScore?,
     friendName: String,
+    isScoreLoading: Boolean,
+    yourScoreError: Boolean,
+    friendScoreError: Boolean,
     modifier: Modifier = Modifier,
 ) {
     RepMateCard(modifier = modifier) {
@@ -349,18 +356,32 @@ private fun ComparisonSection(
             ComparisonColumn(
                 label = "your best",
                 best = yourBest,
-                scoreColor = highlightColorFor(mine = yourBest, other = friendsBest),
+                scoreColor = highlightColorFor(
+                    mine = yourBest,
+                    other = friendsBest
+                ),
+                isLoading = isScoreLoading && yourBest == null && !yourScoreError,
+                hasError = yourScoreError,
                 modifier = Modifier.weight(1f),
             )
+
             ComparisonColumn(
                 label = "$friendName's best",
                 best = friendsBest,
-                scoreColor = highlightColorFor(mine = friendsBest, other = yourBest),
+                scoreColor = highlightColorFor(
+                    mine = friendsBest,
+                    other = yourBest
+                ),
+                isLoading = isScoreLoading &&
+                        friendsBest == null &&
+                        !friendScoreError,
+                hasError = friendScoreError,
                 modifier = Modifier.weight(1f),
             )
         }
     }
 }
+
 
 /** [MaterialTheme.colorScheme.primary] only when [mine] is strictly higher than [other]; a tie or either side missing gets the plain color -- same "exactly one highlighted number" rule as `LeaderboardCard`'s current-user row. */
 @Composable
@@ -369,47 +390,81 @@ private fun highlightColorFor(mine: GhostDuelBestScore?, other: GhostDuelBestSco
     return if (isStrictlyHigher) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
 }
 
+
 @Composable
 private fun ComparisonColumn(
     label: String,
     best: GhostDuelBestScore?,
     scoreColor: Color,
+    isLoading: Boolean,
+    hasError: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
-        if (best == null) {
-            NotAvailableBox()
-        } else {
-            // Same two-line shape as SessionDetailScreen.kt's StatCard: a bold headline number,
-            // a plain line of context underneath.
-            Text(
-                text = String.format(Locale.US, "%.1f/10", best.score),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = scoreColor,
-            )
-            Text(
-                text = "${best.reps} reps",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+
+        when {
+            isLoading -> {
+                ScoreStatusBox("Loading...")
+            }
+
+            hasError -> {
+                ScoreStatusBox("Failed to load score")
+            }
+
+            best == null -> {
+                ScoreStatusBox("No score yet")
+            }
+
+            else -> {
+                Text(
+                    text = String.format(
+                        Locale.US,
+                        "%.1f/10",
+                        best.score
+                    ),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = scoreColor,
+                )
+
+                Text(
+                    text = "${best.reps} reps",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
 
-/** No real best-score query exists yet (see [GhostDuelViewModel]'s KDoc), so both comparison columns always render this today. Solid border, not dashed -- there's no dashed-border primitive in this codebase's real Compose code, that's wireframe-only styling. */
+
 @Composable
-private fun NotAvailableBox(modifier: Modifier = Modifier) {
+private fun ScoreStatusBox(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 16.dp),
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outline,
+                MaterialTheme.shapes.medium
+            )
+            .padding(
+                horizontal = 12.dp,
+                vertical = 16.dp
+            ),
     ) {
         Text(
-            text = "Not available yet",
+            text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -472,6 +527,36 @@ private fun GhostDuelScreenEmptyPreview() {
             onAddFriendClick = {},
             onFriendSelected = {},
             onExerciseSelected = {},
+        )
+    }
+}
+
+@Preview(
+    name = "Ghost Duel - Scores",
+    showBackground = true,
+    widthDp = 360,
+    heightDp = 820
+)
+
+@Composable
+private fun GhostDuelScoresPreview() {
+    RepMateTheme(darkTheme = false) {
+        GhostDuelContent(
+            uiState = PREVIEW_STATE.copy(
+                yourBest = GhostDuelBestScore(
+                    score = 8.5f,
+                    reps = 20
+                ),
+                friendsBest = GhostDuelBestScore(
+                    score = 9.2f,
+                    reps = 15
+                )
+            ),
+            onBackClick = {},
+            onStartWorkoutClick = {},
+            onAddFriendClick = {},
+            onFriendSelected = {},
+            onExerciseSelected = {}
         )
     }
 }
