@@ -14,14 +14,28 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FirestoreFriendRepositoryTest {
 
-    private lateinit var firebaseAuth: FirebaseAuth
-    private lateinit var firestore: FirebaseFirestore
+    companion object {
+        private lateinit var firebaseAuth: FirebaseAuth
+        private lateinit var firestore: FirebaseFirestore
+
+        @JvmStatic
+        @BeforeClass
+        fun setUpClass() {
+            firebaseAuth = FirebaseAuth.getInstance()
+            firestore = FirebaseFirestore.getInstance()
+
+            firebaseAuth.useEmulator("127.0.0.1", 9099)
+            firestore.useEmulator("127.0.0.1", 8080)
+        }
+    }
+
     private lateinit var repository: FirestoreFriendRepository
 
     // Supply disposable test credentials locally.
@@ -33,9 +47,6 @@ class FirestoreFriendRepositoryTest {
 
     @Before
     fun setup() = runBlocking {
-        firebaseAuth = FirebaseAuth.getInstance()
-        firestore = FirebaseFirestore.getInstance()
-
         firebaseAuth.signOut()
 
         firebaseAuth
@@ -54,7 +65,11 @@ class FirestoreFriendRepositoryTest {
     @Test
     fun addFriendAndReadFriendList() = runBlocking {
         val result = repository.addFriend(accountBUid)
-        assertTrue(result.isSuccess)
+
+        assertTrue(
+            "Failed to add friend: ${result.exceptionOrNull()}",
+            result.isSuccess
+        )
 
         val friends = withTimeout(10000) {
             repository.observeFriends().first {
@@ -121,8 +136,17 @@ class FirestoreFriendRepositoryTest {
 
     @Test
     fun addingSameFriendTwiceDoesNotCreateDuplicate() = runBlocking {
-        assertTrue(repository.addFriend(accountBUid).isSuccess)
-        assertTrue(repository.addFriend(accountBUid).isSuccess)
+        val firstResult = repository.addFriend(accountBUid)
+        assertTrue(
+            "Failed to add friend: ${firstResult.exceptionOrNull()}",
+            firstResult.isSuccess
+        )
+
+        val secondResult = repository.addFriend(accountBUid)
+        assertTrue(
+            "Second add failed: ${secondResult.exceptionOrNull()}",
+            secondResult.isSuccess
+        )
 
         val currentUid = firebaseAuth.currentUser!!.uid
 
