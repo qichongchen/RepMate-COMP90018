@@ -6,8 +6,11 @@ import com.repmate.data.repo.BestWorkoutScore
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.tasks.await
+import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val SCORE_EPSILON = 1e-6
 
 @Singleton
 class FirestoreGhostScoreDataSource @Inject constructor(
@@ -57,18 +60,27 @@ class FirestoreGhostScoreDataSource @Inject constructor(
                 val existingStartedAt =
                     existing.getLong("startedAt") ?: Long.MIN_VALUE
 
+                // Treat tiny floating-point differences as equal.
+                // When scores are tied, prefer more reps, then the newer session.
                 val shouldUpdate =
-                    existingScore == null ||
-                            averageScore > existingScore ||
-                            (
-                                    averageScore == existingScore &&
-                                            session.reps.size > existingReps
-                                    ) ||
-                            (
-                                    averageScore == existingScore &&
-                                            session.reps.size == existingReps &&
-                                            session.startedAt > existingStartedAt
-                                    )
+                    if (existingScore == null) {
+                        true
+                    } else {
+                        val scoreDifference = averageScore - existingScore
+
+                        when {
+                            scoreDifference > SCORE_EPSILON -> true
+
+                            abs(scoreDifference) <= SCORE_EPSILON ->
+                                session.reps.size > existingReps ||
+                                        (
+                                                session.reps.size == existingReps &&
+                                                        session.startedAt > existingStartedAt
+                                                )
+
+                            else -> false
+                        }
+                    }
 
                 if (shouldUpdate) {
                     transaction.set(
