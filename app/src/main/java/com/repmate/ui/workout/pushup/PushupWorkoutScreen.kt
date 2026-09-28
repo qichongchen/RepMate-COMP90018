@@ -13,6 +13,7 @@ import androidx.camera.core.Preview as CameraPreview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,11 +29,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -52,12 +57,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.example.repmate.BuildConfig
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.engine.PushupRepDetector
 import com.repmate.pose.Arm
+import com.repmate.pose.CountingStatus
 import com.repmate.pose.Tracking
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.ScreenLockOverlay
@@ -73,12 +80,17 @@ import java.util.concurrent.Executors
  * and the stateless [PushupWorkoutContent] below, same reasoning as every other screen in this
  * app -- previews render from a plain [PushupWorkoutUiState], no camera or Hilt required.
  *
- * ## The screen faces away
- * The phone is propped to the side with the rear camera, so the user is not looking at this
- * screen mid-set -- every counted rep is also spoken and buzzed (see `RepFeedback`, wired in
- * [PushupWorkoutViewModel]), the same reasoning [com.repmate.ui.workout.LiveWorkoutViewModel]
- * uses for every exercise, just more load-bearing here since there is no glance-at-the-phone
- * fallback.
+ * ## Which way the screen faces
+ * The rear camera is the default: the phone is propped to the side, so the user is not looking at
+ * this screen mid-set. The flip button switches to the front camera, which leaves the screen
+ * facing the user. Either way every counted rep is also spoken and buzzed (see `RepFeedback`,
+ * wired in [PushupWorkoutViewModel]) according to the user's Profile settings -- the feedback does
+ * not depend on the camera, so the rear camera, where nobody can glance at the count, is covered
+ * by the same path.
+ *
+ * ## When it is not counting
+ * [PushupWorkoutUiState.status] says why (phone moving, no person, arm not clear) and this screen
+ * shows it as a hint; counting is paused, not lost, in each case. See [PushupFrameProcessor].
  *
  * ## Screen lock
  * The lock button beside "End workout" is a pocket-safety lock -- see [ScreenLockOverlay]. Named
@@ -123,11 +135,21 @@ fun PushupWorkoutScreen(
 
     if (hasPermission) {
         val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
-        CameraEffect(previewView = previewView, lifecycleOwner = lifecycleOwner, onPose = viewModel::onPose)
+        CameraEffect(
+            previewView = previewView,
+            lifecycleOwner = lifecycleOwner,
+            facing = uiState.cameraFacing,
+            onPose = viewModel::onPose,
+        )
+        val canSwitchCamera =
+            inPreview || context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FRONT)
 
         PushupWorkoutContent(
             uiState = uiState,
             previewView = if (inPreview) null else previewView,
+            canSwitchCamera = canSwitchCamera,
+            onCameraToggled = viewModel::onCameraToggled,
+            onMotionLimitsScaled = viewModel::onMotionLimitsScaled,
             onEndWorkoutClicked = viewModel::onEndWorkoutClicked,
             screenLocked = screenLocked,
             onScreenLockToggled = { screenLocked = !screenLocked },
@@ -151,17 +173,21 @@ private fun KeepScreenOnEffect() {
     }
 }
 
-/** Binds the camera + pose analyzer to [lifecycleOwner]'s lifecycle, unbinding on dispose. */
+/**
+ * Binds the camera + pose analyzer to [lifecycleOwner]'s lifecycle, unbinding on dispose. Keyed on
+ * [facing] as well, so switching camera unbinds the old one, closes its analyzer and binds afresh.
+ */
 @Composable
 private fun CameraEffect(
     previewView: PreviewView,
     lifecycleOwner: LifecycleOwner,
+    facing: CameraFacing,
     onPose: (Arm?, Arm?) -> Unit,
 ) {
     val context = LocalContext.current
     val inPreview = LocalInspectionMode.current
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, facing) {
         if (inPreview) return@DisposableEffect onDispose {}
 
         val analysisExecutor = Executors.newSingleThreadExecutor()
@@ -180,8 +206,13 @@ private fun CameraEffect(
                         .also { it.setAnalyzer(analysisExecutor, analyzer) }
                 try {
                     provider.unbindAll()
-                    // Rear camera: the screen faces away from the user (see this file's KDoc).
-                    provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                    val selector =
+                        when (facing) {
+                            CameraFacing.REAR -> CameraSelector.DEFAULT_BACK_CAMERA
+                            CameraFacing.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
+                        }
+                    provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                    Log.i(TAG, "camera bound: $facing")
                 } catch (e: Exception) {
                     Log.e(TAG, "could not bind the camera", e)
                 }
@@ -236,6 +267,9 @@ private fun CameraPermissionRationale(
 private fun PushupWorkoutContent(
     uiState: PushupWorkoutUiState,
     previewView: PreviewView?,
+    canSwitchCamera: Boolean,
+    onCameraToggled: () -> Unit,
+    onMotionLimitsScaled: (Double) -> Unit,
     onEndWorkoutClicked: () -> Unit,
     screenLocked: Boolean,
     onScreenLockToggled: () -> Unit,
@@ -270,11 +304,13 @@ private fun PushupWorkoutContent(
                         .safeDrawingPadding()
                         .padding(24.dp),
             ) {
-                TrackingBadge(tracking = uiState.tracking, armLocked = uiState.armLocked)
+                StatusBadge(status = uiState.status)
+
+                StatusHint(status = uiState.status)
 
                 if (!uiState.armLocked) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    PlacementInstructions()
+                    PlacementInstructions(facing = uiState.cameraFacing)
                 }
 
                 Column(
@@ -294,7 +330,8 @@ private fun PushupWorkoutContent(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "phase: ${uiState.phase.name.lowercase(Locale.US)}",
+                        text = "phase: ${uiState.phase.name.lowercase(Locale.US)} · " +
+                            "${uiState.cameraFacing.name.lowercase(Locale.US)} camera",
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White,
                     )
@@ -302,6 +339,12 @@ private fun PushupWorkoutContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                         FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
                         FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
+                    }
+                    if (BuildConfig.DEBUG) {
+                        uiState.motion?.let {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            MotionDebugReadout(motion = it, onLimitsScaled = onMotionLimitsScaled)
+                        }
                     }
                 }
 
@@ -315,6 +358,9 @@ private fun PushupWorkoutContent(
                         onClick = onEndWorkoutClicked,
                         modifier = Modifier.weight(1f),
                     )
+                    if (canSwitchCamera) {
+                        CameraFlipButton(facing = uiState.cameraFacing, onClick = onCameraToggled)
+                    }
                     ScreenLockButton()
                 }
             }
@@ -323,17 +369,17 @@ private fun PushupWorkoutContent(
 }
 
 @Composable
-private fun TrackingBadge(
-    tracking: Tracking,
-    armLocked: Boolean,
+private fun StatusBadge(
+    status: CountingStatus,
     modifier: Modifier = Modifier,
 ) {
     val (color, label) =
-        when {
-            tracking == Tracking.NO_PERSON -> Color(0xFFE53935) to "no person in frame"
-            tracking == Tracking.LOW_CONFIDENCE -> Color(0xFFFFB300) to "low confidence"
-            !armLocked -> Color(0xFFFFB300) to "finding your arm..."
-            else -> Color(0xFF43A047) to "tracking"
+        when (status) {
+            CountingStatus.COUNTING -> Color(0xFF43A047) to "tracking"
+            CountingStatus.PHONE_MOVING -> Color(0xFFFFB300) to "phone moving - paused"
+            CountingStatus.NO_PERSON -> Color(0xFFE53935) to "no person detected"
+            CountingStatus.LOW_CONFIDENCE -> Color(0xFFFFB300) to "low confidence - paused"
+            CountingStatus.FINDING_ARM -> Color(0xFFFFB300) to "finding your arm..."
         }
     Row(
         modifier =
@@ -348,8 +394,42 @@ private fun TrackingBadge(
     }
 }
 
+/** The reason counting is paused, spelled out; nothing at all while counting or still finding the arm. */
 @Composable
-private fun PlacementInstructions(modifier: Modifier = Modifier) {
+private fun StatusHint(
+    status: CountingStatus,
+    modifier: Modifier = Modifier,
+) {
+    val text =
+        when (status) {
+            CountingStatus.PHONE_MOVING -> "Hold the phone still. Counting is paused until it settles."
+            CountingStatus.NO_PERSON -> "No person detected. Step into frame - counting is paused."
+            CountingStatus.LOW_CONFIDENCE -> "Can't see your arm clearly. Counting is paused."
+            CountingStatus.COUNTING, CountingStatus.FINDING_ARM -> return
+        }
+    Spacer(modifier = Modifier.height(16.dp))
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(Color(0xCCB26A00), MaterialTheme.shapes.medium)
+                .padding(16.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+            color = Color.White,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun PlacementInstructions(
+    facing: CameraFacing,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier =
             modifier
@@ -358,7 +438,13 @@ private fun PlacementInstructions(modifier: Modifier = Modifier) {
                 .padding(16.dp),
     ) {
         Text(
-            text = "Prop your phone to the side, at floor level, so your whole body is in frame.",
+            text =
+                when (facing) {
+                    CameraFacing.REAR -> "Prop your phone to the side, at floor level, so your whole body is in frame."
+                    CameraFacing.FRONT ->
+                        "Prop your phone to the side at floor level, screen facing you, " +
+                            "so your whole body is in frame."
+                },
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White,
             textAlign = TextAlign.Center,
@@ -366,6 +452,75 @@ private fun PlacementInstructions(modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** Same circular outline treatment as the screen-lock button beside it. */
+@Composable
+private fun CameraFlipButton(
+    facing: CameraFacing,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier =
+            modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Cameraswitch,
+            contentDescription =
+                when (facing) {
+                    CameraFacing.REAR -> "Switch to front camera"
+                    CameraFacing.FRONT -> "Switch to rear camera"
+                },
+            tint = Color.White,
+        )
+    }
+}
+
+/**
+ * Debug builds only: the stability gate's live readings against its limits, with buttons to scale
+ * both limits, so they can be tuned on the phone without rebuilding. Scaling is not saved; once a
+ * value feels right, it goes into [com.repmate.sensors.StabilityConfig]'s defaults.
+ */
+@Composable
+private fun MotionDebugReadout(
+    motion: MotionReadout,
+    onLimitsScaled: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .background(Color.Black.copy(alpha = 0.4f), MaterialTheme.shapes.medium)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "phone motion ${(motion.level * 100).toInt()}% of limit",
+            style = MaterialTheme.typography.labelLarge,
+            color = Color.White,
+        )
+        Text(
+            text = "gyro %.3f / %.3f rad/s".format(Locale.US, motion.gyroRmsRadPerSec, motion.gyroLimitRadPerSec),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+        )
+        Text(
+            text = "accel %.3f / %.3f m/s2".format(Locale.US, motion.accelStdMps2, motion.accelLimitMps2),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+        )
+        Row {
+            TextButton(onClick = { onLimitsScaled(1 / LIMIT_STEP) }) { Text("tighter", color = Color.White) }
+            TextButton(onClick = { onLimitsScaled(LIMIT_STEP) }) { Text("looser", color = Color.White) }
+        }
+    }
+}
+
+private const val LIMIT_STEP = 1.25
 
 @Composable
 private fun FeedbackIndicator(
@@ -387,6 +542,7 @@ private val PREVIEW_STATE =
         tracking = Tracking.TRACKING,
         armLocked = true,
         elapsedMillis = 42_000L,
+        status = CountingStatus.COUNTING,
     )
 
 @Preview(name = "Push-up workout - tracking", showBackground = true, widthDp = 360, heightDp = 780)
@@ -396,6 +552,9 @@ private fun PushupWorkoutTrackingPreview() {
         PushupWorkoutContent(
             uiState = PREVIEW_STATE,
             previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
             screenLocked = false,
             onScreenLockToggled = {},
@@ -408,8 +567,11 @@ private fun PushupWorkoutTrackingPreview() {
 private fun PushupWorkoutFindingArmPreview() {
     RepMateTheme {
         PushupWorkoutContent(
-            uiState = PushupWorkoutUiState(tracking = Tracking.TRACKING, armLocked = false),
+            uiState = PushupWorkoutUiState(tracking = Tracking.TRACKING, status = CountingStatus.FINDING_ARM),
             previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
             screenLocked = false,
             onScreenLockToggled = {},
@@ -424,8 +586,50 @@ private fun PushupWorkoutScreenLockedPreview() {
         PushupWorkoutContent(
             uiState = PREVIEW_STATE,
             previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
             screenLocked = true,
+            onScreenLockToggled = {},
+        )
+    }
+}
+
+@Preview(name = "Push-up workout - phone moving", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun PushupWorkoutPhoneMovingPreview() {
+    RepMateTheme {
+        PushupWorkoutContent(
+            uiState = PREVIEW_STATE.copy(status = CountingStatus.PHONE_MOVING),
+            previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
+            onEndWorkoutClicked = {},
+            screenLocked = false,
+            onScreenLockToggled = {},
+        )
+    }
+}
+
+@Preview(name = "Push-up workout - no person, front camera", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun PushupWorkoutNoPersonFrontPreview() {
+    RepMateTheme {
+        PushupWorkoutContent(
+            uiState =
+                PREVIEW_STATE.copy(
+                    status = CountingStatus.NO_PERSON,
+                    tracking = Tracking.NO_PERSON,
+                    cameraFacing = CameraFacing.FRONT,
+                ),
+            previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
+            onEndWorkoutClicked = {},
+            screenLocked = false,
             onScreenLockToggled = {},
         )
     }

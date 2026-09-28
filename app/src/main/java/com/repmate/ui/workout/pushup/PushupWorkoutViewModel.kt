@@ -5,18 +5,20 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.repmate.BuildConfig
 import com.repmate.data.repo.SessionRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.PushupRepDetector
 import com.repmate.engine.RepScore
 import com.repmate.engine.WorkoutSession
 import com.repmate.pose.Arm
-import com.repmate.pose.ArmLock
+import com.repmate.pose.CountingStatus
 import com.repmate.pose.Tracking
-import com.repmate.pose.elbowAngleDegrees
-import com.repmate.pose.trackingState
+import com.repmate.pose.countingStatus
 import com.repmate.safety.CheckInScheduler
 import com.repmate.safety.SafetyCheckInPreferences
+import com.repmate.sensors.PhoneStabilityGate
+import com.repmate.sensors.SensorSource
 import com.repmate.ui.theme.WorkoutPreferences
 import com.repmate.ui.workout.RepFeedback
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,6 +37,28 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
+/** Which camera the workout reads. Rear is the default: the phone is propped up and faces the user's side. */
+enum class CameraFacing {
+    REAR,
+    FRONT,
+    ;
+
+    fun toggled(): CameraFacing = if (this == REAR) FRONT else REAR
+}
+
+/**
+ * The stability gate's live readings, for the debug-only readout on the workout screen.
+ *
+ * @property level the larger of the two readings as a fraction of its limit; above 1.0 counting pauses.
+ */
+data class MotionReadout(
+    val level: Float,
+    val gyroRmsRadPerSec: Float,
+    val accelStdMps2: Float,
+    val gyroLimitRadPerSec: Float,
+    val accelLimitMps2: Float,
+)
+
 /** What [PushupWorkoutScreen] renders. */
 data class PushupWorkoutUiState(
     val repCount: Int = 0,
@@ -42,6 +66,10 @@ data class PushupWorkoutUiState(
     val tracking: Tracking = Tracking.NO_PERSON,
     val armLocked: Boolean = false,
     val elapsedMillis: Long = 0L,
+    val status: CountingStatus = CountingStatus.NO_PERSON,
+    val cameraFacing: CameraFacing = CameraFacing.REAR,
+    /** Only filled in debug builds. */
+    val motion: MotionReadout? = null,
 )
 
 /**
@@ -54,11 +82,22 @@ data class PushupWorkoutUiState(
  * ## The pipeline
  * [PushupWorkoutScreen] owns the camera and ML Kit pose detector (both need a `LifecycleOwner`,
  * which a `ViewModel` isn't) and feeds each frame's landmarks to this class as a pair of [Arm]s
- * via [onPose]. From there:
- * 1. [armLock] settles on one arm for the set and sticks with it (see its own KDoc for why).
- * 2. Once locked, [elbowAngleDegrees] turns that arm into a single angle.
- * 3. [repDetector] -- pure Kotlin, unit-tested on its own -- turns the angle stream into rep
- *    transitions.
+ * via [onPose]. From there, [PushupFrameProcessor] -- pure Kotlin, unit-tested -- decides whether
+ * the frame may count (phone steady, a confident person in frame, an arm locked) and if so turns
+ * that arm into an angle for [PushupRepDetector], which turns the angle stream into rep
+ * transitions. This class only wires those to Android: the camera frames in, the sensor stream
+ * into [PhoneStabilityGate], the results out to [uiState] and [RepFeedback].
+ *
+ * ## Two inputs, one gate
+ * The IMU stream (the same [SensorSource] the squat and jumping-jack workouts use) is collected
+ * for the life of this ViewModel purely to tell whether the phone is being moved -- background
+ * motion from a shifting phone otherwise looks to the pose detector like a person moving. Neither
+ * stream drives the other; [onPose] simply reads the gate's latest answer.
+ *
+ * ## Rep count and resets
+ * The count shown, spoken and saved is [scoredReps]'s size, not the detector's own count: the
+ * detector is reset when the camera is switched or a long block ends, and a rep already counted
+ * must survive that.
  *
  * ## No calibration
  * Unlike squat and jumping jack, push-ups skip calibration entirely for now (see
@@ -75,6 +114,7 @@ class PushupWorkoutViewModel
         private val safetyCheckInPreferences: SafetyCheckInPreferences,
         private val checkInScheduler: CheckInScheduler,
         private val workoutPreferences: WorkoutPreferences,
+        private val sensorSource: SensorSource,
         @ApplicationContext context: Context,
     ) : ViewModel() {
         private val sessionId = UUID.randomUUID().toString()
@@ -91,8 +131,8 @@ class PushupWorkoutViewModel
         private val spokenRepCountEnabled =
             workoutPreferences.isSpokenRepCountEnabled
                 .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-        private val armLock = ArmLock()
-        private val repDetector = PushupRepDetector()
+        private val frameProcessor = PushupFrameProcessor()
+        private val stabilityGate = PhoneStabilityGate()
 
         private val _uiState = MutableStateFlow(PushupWorkoutUiState())
         val uiState: StateFlow<PushupWorkoutUiState> = _uiState.asStateFlow()
@@ -104,36 +144,100 @@ class PushupWorkoutViewModel
         private var lastRepAtElapsedMs: Long = SystemClock.elapsedRealtime()
 
         private var timerJob: Job? = null
+        private var sensorJob: Job? = null
+        private var lastReadoutAtMs = Long.MIN_VALUE
+        private var lastMotionLogAtMs = Long.MIN_VALUE
 
         init {
             startTimer()
+            collectSensorFrames()
         }
 
         /** Called on the main thread with one frame's arms, once ML Kit has processed it. */
         fun onPose(left: Arm?, right: Arm?) {
-            armLock.observe(left, right)
-            val locked = armLock.isLocked
-            val arm = if (locked) armLock.armFor(left, right) else null
-
-            val tracking = trackingState(arm, MIN_CONFIDENCE, previous = _uiState.value.tracking)
-
-            if (locked) {
-                val angle = arm?.let { elbowAngleDegrees(it) }
-                // Same reasoning as the probe this was ported from: once locked, the counter is fed
-                // whatever the tracking label says, since a gate that flips several times a second
-                // would otherwise count nothing.
-                val transition = repDetector.update(angle)
-                if (transition?.repCompleted == true) onRepCompleted()
+            val result =
+                frameProcessor.process(
+                    left = left,
+                    right = right,
+                    phoneStable = stabilityGate.isStable,
+                    nowMs = SystemClock.elapsedRealtime(),
+                )
+            if (result.status != _uiState.value.status) {
+                Log.i(TAG, "counting status: ${_uiState.value.status} -> ${result.status}")
             }
+            if (result.repCompleted) onRepCompleted()
 
             _uiState.update {
                 it.copy(
-                    repCount = repDetector.count,
-                    phase = repDetector.phase,
-                    tracking = tracking,
-                    armLocked = locked,
+                    repCount = scoredReps.size,
+                    phase = result.phase,
+                    tracking = result.tracking,
+                    armLocked = result.armLocked,
+                    status = result.status,
                 )
             }
+        }
+
+        /**
+         * Collects the IMU stream for the rest of this ViewModel's lifetime, solely to feed
+         * [stabilityGate]. Cancelling it (in [onEndWorkoutClicked] and [onCleared]) is what reaches
+         * `DeviceSensorSource`'s `awaitClose { stop() }` and releases the hardware.
+         */
+        private fun collectSensorFrames() {
+            sensorJob =
+                viewModelScope.launch {
+                    sensorSource.frames.collect { frame ->
+                        val wasStable = stabilityGate.isStable
+                        stabilityGate.onFrame(frame)
+                        val stable = stabilityGate.isStable
+
+                        if (stable != wasStable) {
+                            Log.i(
+                                TAG,
+                                "phone ${if (stable) "steady" else "moving"}: " + motionSummary(),
+                            )
+                        }
+                        if (frame.tMillis - lastMotionLogAtMs >= MOTION_LOG_INTERVAL_MS) {
+                            lastMotionLogAtMs = frame.tMillis
+                            Log.i(TAG, "motion: " + motionSummary())
+                        }
+
+                        val readoutDue = BuildConfig.DEBUG && frame.tMillis - lastReadoutAtMs >= READOUT_INTERVAL_MS
+                        if (stable != wasStable || readoutDue) {
+                            if (readoutDue) lastReadoutAtMs = frame.tMillis
+                            _uiState.update {
+                                it.copy(
+                                    // The camera may be quiet for a moment; do not wait for the next pose
+                                    // frame to show "hold the phone still".
+                                    status = countingStatus(stable, it.tracking, it.armLocked),
+                                    motion = if (readoutDue) currentReadout() else it.motion,
+                                )
+                            }
+                        }
+                    }
+                }
+        }
+
+        private fun currentReadout(): MotionReadout {
+            val config = stabilityGate.config
+            return MotionReadout(
+                level = stabilityGate.level.toFloat(),
+                gyroRmsRadPerSec = stabilityGate.gyroRmsRadPerSec.toFloat(),
+                accelStdMps2 = stabilityGate.accelStdMps2.toFloat(),
+                gyroLimitRadPerSec = config.gyroLimitRadPerSec.toFloat(),
+                accelLimitMps2 = config.accelLimitMps2.toFloat(),
+            )
+        }
+
+        private fun motionSummary(): String {
+            val config = stabilityGate.config
+            return "level %.2f (gyro %.3f/%.3f rad/s, accel std %.3f/%.3f m/s^2)".format(
+                stabilityGate.level,
+                stabilityGate.gyroRmsRadPerSec,
+                config.gyroLimitRadPerSec,
+                stabilityGate.accelStdMps2,
+                config.accelLimitMps2,
+            )
         }
 
         private fun onRepCompleted() {
@@ -147,7 +251,7 @@ class PushupWorkoutViewModel
             // straight-bent-straight cycle -- it just isn't graded yet.
             val score =
                 RepScore(
-                    repIndex = repDetector.count - 1,
+                    repIndex = scoredReps.size,
                     score = 10f,
                     tempoSeconds = tempoSeconds,
                     rangePercent = 100,
@@ -156,22 +260,56 @@ class PushupWorkoutViewModel
                 )
             scoredReps += score
             Log.i(TAG, "push-up rep ${scoredReps.size}: tempo %.1fs".format(tempoSeconds))
+            // Deliberately independent of the camera in use: the rear camera leaves the user
+            // looking away from the screen, the front camera leaves them looking at it, and either
+            // way the buzz and spoken count are the user's settings, not something the camera chooses.
             repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
         }
 
-        /** Resets the count and arm lock for a fresh set -- used if the camera is re-bound. */
+        /**
+         * Switches between the rear and front camera. Keeps the reps already counted, but forgets
+         * the arm lock and any half-finished rep: the geometry the lock was chosen on no longer holds.
+         */
+        fun onCameraToggled() {
+            val facing = _uiState.value.cameraFacing.toggled()
+            Log.i(TAG, "camera switched to $facing")
+            frameProcessor.reset()
+            _uiState.update {
+                it.copy(
+                    cameraFacing = facing,
+                    phase = PushupRepDetector.Phase.WAITING,
+                    tracking = Tracking.NO_PERSON,
+                    armLocked = false,
+                    status = countingStatus(stabilityGate.isStable, Tracking.NO_PERSON, armLocked = false),
+                )
+            }
+        }
+
+        /** Multiplies both stability limits by [factor] -- above 1 is more forgiving. Debug tuning. */
+        fun onMotionLimitsScaled(factor: Double) {
+            stabilityGate.config = stabilityGate.config.scaledBy(factor)
+            Log.i(TAG, "stability limits now: " + motionSummary())
+        }
+
+        /** Resets the count and arm lock for a fresh set. */
         fun onResetClicked() {
-            armLock.reset()
-            repDetector.reset()
+            frameProcessor.reset()
             scoredReps.clear()
             lastRepAtElapsedMs = SystemClock.elapsedRealtime()
-            _uiState.update { PushupWorkoutUiState(elapsedMillis = it.elapsedMillis) }
+            _uiState.update {
+                PushupWorkoutUiState(
+                    elapsedMillis = it.elapsedMillis,
+                    cameraFacing = it.cameraFacing,
+                    motion = it.motion,
+                )
+            }
         }
 
         /** Saves the session for real via [SessionRepository], then fires [workoutFinished]. */
         fun onEndWorkoutClicked() {
             Log.i(TAG, "push-up workout ended: ${scoredReps.size} reps counted")
             timerJob?.cancel()
+            sensorJob?.cancel()
 
             val session =
                 WorkoutSession(
@@ -206,14 +344,20 @@ class PushupWorkoutViewModel
         }
 
         override fun onCleared() {
+            // sensorJob is cancelled here as well as in onEndWorkoutClicked, so backing out without
+            // tapping "End workout" still releases the IMU.
             timerJob?.cancel()
+            sensorJob?.cancel()
             repFeedback.release()
         }
 
         private companion object {
             const val TAG = "RepMatePushupWorkout"
 
-            /** Starting threshold for "every point of the locked arm is in frame"; see [Tracking]. */
-            const val MIN_CONFIDENCE = 0.5f
+            /** How often the debug readout refreshes; the gate itself runs on every frame. */
+            const val READOUT_INTERVAL_MS = 200L
+
+            /** How often the motion level is written to logcat, for tuning the limits. */
+            const val MOTION_LOG_INTERVAL_MS = 1_000L
         }
     }
