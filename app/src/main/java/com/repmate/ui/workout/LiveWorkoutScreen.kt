@@ -56,6 +56,7 @@ import com.repmate.engine.JumpingJackRepDetector
 import com.repmate.engine.RepPhase
 import com.repmate.engine.RepScore
 import com.repmate.ui.audio.JumpingJackMetronome
+import com.repmate.ui.components.KeepScreenOn
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.ScreenLockOverlay
 import com.repmate.ui.components.displayLabel
@@ -92,6 +93,10 @@ fun LiveWorkoutScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var screenLocked by remember { mutableStateOf(false) }
+
+    // Phone in a pocket for the whole set: if the screen times out, Android stops delivering the
+    // sensor events the reps are counted from.
+    KeepScreenOn()
 
     LaunchedEffect(exerciseType) {
         viewModel.onExerciseType(exerciseType)

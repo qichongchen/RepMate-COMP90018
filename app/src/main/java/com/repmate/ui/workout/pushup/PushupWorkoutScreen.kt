@@ -1,10 +1,8 @@
 package com.repmate.ui.workout.pushup
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.util.Log
-import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -66,6 +64,7 @@ import com.repmate.engine.PushupRepDetector
 import com.repmate.pose.Arm
 import com.repmate.pose.CountingStatus
 import com.repmate.pose.Tracking
+import com.repmate.ui.components.KeepScreenOn
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.ScreenLockOverlay
 import com.repmate.ui.theme.RepMateTheme
@@ -131,7 +130,7 @@ fun PushupWorkoutScreen(
 
     // The set can run for minutes with the phone propped up and no touches -- must not sleep and
     // lose the camera mid-set.
-    KeepScreenOnEffect()
+    KeepScreenOn()
 
     if (hasPermission) {
         val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
@@ -160,16 +159,6 @@ fun PushupWorkoutScreen(
             onGrantClicked = { permissionLauncher.launch(Manifest.permission.CAMERA) },
             modifier = modifier,
         )
-    }
-}
-
-/** Sets `FLAG_KEEP_SCREEN_ON` for as long as this composable is present, then clears it. */
-@Composable
-private fun KeepScreenOnEffect() {
-    val window = (LocalContext.current as? Activity)?.window
-    DisposableEffect(window) {
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 }
 
