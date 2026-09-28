@@ -1,6 +1,7 @@
 package com.repmate.ui.friends
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -72,7 +73,12 @@ fun FriendsScreen(
             )
         },
         snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                SnackbarHost(hostState = snackbarHostState)
+            }
         },
     ) { innerPadding ->
         Column(
