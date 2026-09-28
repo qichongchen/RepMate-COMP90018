@@ -145,8 +145,8 @@ class PushupWorkoutViewModel
 
         private var timerJob: Job? = null
         private var sensorJob: Job? = null
-        private var lastReadoutAtMs = Long.MIN_VALUE
-        private var lastMotionLogAtMs = Long.MIN_VALUE
+        private val readoutThrottle = Throttle(READOUT_INTERVAL_MS)
+        private val motionLogThrottle = Throttle(MOTION_LOG_INTERVAL_MS)
 
         init {
             startTimer()
@@ -197,14 +197,12 @@ class PushupWorkoutViewModel
                                 "phone ${if (stable) "steady" else "moving"}: " + motionSummary(),
                             )
                         }
-                        if (frame.tMillis - lastMotionLogAtMs >= MOTION_LOG_INTERVAL_MS) {
-                            lastMotionLogAtMs = frame.tMillis
+                        if (motionLogThrottle.ready(frame.tMillis)) {
                             Log.i(TAG, "motion: " + motionSummary())
                         }
 
-                        val readoutDue = BuildConfig.DEBUG && frame.tMillis - lastReadoutAtMs >= READOUT_INTERVAL_MS
+                        val readoutDue = BuildConfig.DEBUG && readoutThrottle.ready(frame.tMillis)
                         if (stable != wasStable || readoutDue) {
-                            if (readoutDue) lastReadoutAtMs = frame.tMillis
                             _uiState.update {
                                 it.copy(
                                     // The camera may be quiet for a moment; do not wait for the next pose
