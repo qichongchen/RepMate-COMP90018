@@ -49,6 +49,7 @@ import com.repmate.engine.CalibrationProfile
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.JumpingJackRepDetector
 import com.repmate.ui.audio.JumpingJackMetronome
+import com.repmate.ui.components.KeepScreenOn
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.theme.RepMateTheme
 
@@ -77,6 +78,10 @@ fun CalibrationScreen(
     viewModel: CalibrationViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Calibration is a timed capture with the phone in a pocket: a screen timeout mid-capture
+    // would stop the sensor stream and ruin the set.
+    KeepScreenOn()
 
     LaunchedEffect(exerciseType) {
         viewModel.onExerciseType(exerciseType)
