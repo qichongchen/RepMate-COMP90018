@@ -112,7 +112,7 @@ constructor(
                     // whenever the selected friend changes.
                     if (
                         previousFriendId != selectedFriendId ||
-                        (selectedFriendId != null && scoreJob == null)
+                        scoreJob == null
                     ) {
                         loadScores()
                     }
@@ -181,15 +181,10 @@ constructor(
             it.copy(
                 yourBest = null,
                 friendsBest = null,
-                isScoreLoading = friendId != null,
+                isScoreLoading = true,
                 yourScoreError = false,
                 friendScoreError = false
             )
-        }
-
-        // No opponent means there is no comparison to load.
-        if (friendId == null) {
-            return
         }
 
         scoreJob = viewModelScope.launch {
@@ -229,6 +224,11 @@ constructor(
                             )
                         }
                     )
+                }
+
+                // Friend Best is only loaded once a friend is selected.
+                if (friendId == null) {
+                    return@launch
                 }
 
                 // 2. Load the selected friend's published score.
