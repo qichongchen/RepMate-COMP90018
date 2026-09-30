@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.engine.ExerciseType
+import com.repmate.safety.CheckInScheduler
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
@@ -124,6 +127,12 @@ fun ProfileScreen(
             // SEND_SMS is the only one that gates the feature -- see this file's KDoc.
             if (grants[Manifest.permission.SEND_SMS] == true) {
                 viewModel.onSafetyCheckInToggled(true)
+                // Check-in with nobody to alert does nothing when it escalates (see
+                // CheckInEscalateWorker), so ask for the contact now rather than leave the user
+                // believing they are covered.
+                if (uiState.emergencyContactName.isBlank() || uiState.emergencyContactPhone.isBlank()) {
+                    showEmergencyContactDialog = true
+                }
             } else {
                 showPermissionDeniedNotice = true
             }
@@ -585,8 +594,10 @@ private fun SafetyCheckInDisclaimerDialog(
         title = { Text("Turn on safety check-in?") },
         text = {
             Text(
-                "This notifies a contact you choose. It is not an emergency service. In an " +
-                    "emergency, call 000 or use your phone's built-in SOS.",
+                "After each workout, RepMate asks if you're OK. If you don't answer within about " +
+                    "${checkInWindowMinutes()} minutes, it texts your emergency contact your last known " +
+                    "location. This is not an emergency service. In an emergency, call 000 or use " +
+                    "your phone's built-in SOS.",
             )
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text("Continue") } },
@@ -594,7 +605,19 @@ private fun SafetyCheckInDisclaimerDialog(
     )
 }
 
-/** The one emergency contact safety check-in alerts -- name and phone number, both required to save. */
+/**
+ * How long after finishing a workout the emergency contact is texted if the user has not answered:
+ * the check-in delay plus the response window. Derived from [CheckInScheduler]'s defaults, not
+ * hardcoded, so the copy in the dialogs below cannot drift from the real timing.
+ */
+private fun checkInWindowMinutes(): Long =
+    (CheckInScheduler.DEFAULT_CHECK_IN_DELAY + CheckInScheduler.DEFAULT_RESPONSE_WINDOW).inWholeMinutes
+
+/**
+ * The one emergency contact safety check-in alerts -- name and phone number, both required to
+ * save. The number is cleaned and checked by [normalizePhoneNumber] on Save, and the cleaned form
+ * is what [onSave] receives (and so what is stored and shown again next time).
+ */
 @Composable
 private fun EmergencyContactDialog(
     initialName: String,
@@ -604,12 +627,21 @@ private fun EmergencyContactDialog(
 ) {
     var name by remember { mutableStateOf(initialName) }
     var phone by remember { mutableStateOf(initialPhone) }
+    var phoneError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Emergency contact") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text =
+                        "If you don't tap \"I'm OK\" within about ${checkInWindowMinutes()} minutes of " +
+                            "finishing a workout, RepMate sends this person a text message with your " +
+                            "last known location. Standard SMS rates may apply.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -619,16 +651,29 @@ private fun EmergencyContactDialog(
                 )
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = { phone = it },
+                    onValueChange = {
+                        phone = it
+                        phoneError = null
+                    },
                     label = { Text("Phone number") },
                     singleLine = true,
+                    isError = phoneError != null,
+                    supportingText = { Text(phoneError ?: "Include the country code, e.g. +61 412 345 678") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(name.trim(), phone.trim()) },
+                onClick = {
+                    val cleaned = normalizePhoneNumber(phone)
+                    if (cleaned == null) {
+                        phoneError = "Enter a valid phone number, including the country code"
+                    } else {
+                        onSave(name.trim(), cleaned)
+                    }
+                },
                 enabled = name.isNotBlank() && phone.isNotBlank(),
             ) { Text("Save") }
         },
