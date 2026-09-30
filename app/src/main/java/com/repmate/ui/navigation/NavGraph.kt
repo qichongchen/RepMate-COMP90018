@@ -293,6 +293,19 @@ fun RepMateNavGraph(
         }
     }
 
+    // Shared by the bottom bar and any in-screen shortcut to a tab (e.g. History's empty state
+    // sending the user to Home), so both switch tabs identically: the tab highlights correctly and
+    // the back stack doesn't grow.
+    val navigateToBottomNavRoute: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
+            // is already on, and restore each tab's state when they switch back to it.
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         bottomBar = {
@@ -307,13 +320,7 @@ fun RepMateNavGraph(
                                 BottomNavItem.Leaderboard -> RepMateDestinations.LEADERBOARD
                                 BottomNavItem.Profile -> RepMateDestinations.PROFILE
                             }
-                        navController.navigate(route) {
-                            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
-                            // is already on, and restore each tab's state when they switch back to it.
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        navigateToBottomNavRoute(route)
                     },
                 )
             }
@@ -435,6 +442,9 @@ fun RepMateNavGraph(
                     onSessionClick = { sessionId ->
                         navController.navigate(RepMateDestinations.sessionDetail(sessionId))
                     },
+                    // Home is where the exercise chips live, and they go through startExercise, so
+                    // the tutorial and calibration checks still apply.
+                    onStartWorkoutClick = { navigateToBottomNavRoute(RepMateDestinations.HOME) },
                 )
             }
             composable(RepMateDestinations.LEADERBOARD) { LeaderboardScreen()}
