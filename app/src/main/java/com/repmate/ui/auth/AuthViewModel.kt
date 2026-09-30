@@ -13,6 +13,7 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.repmate.data.cloud.FirestoreUserProfileDataSource
+import com.repmate.data.repo.UsernameRepository
 import com.repmate.data.sync.GuestMigrationLauncher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -73,6 +74,7 @@ class AuthViewModel
         private val firebaseAuth: FirebaseAuth,
         private val userProfileDataSource: FirestoreUserProfileDataSource,
         private val guestMigration: GuestMigrationLauncher,
+        private val usernameRepository: UsernameRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AuthFormUiState())
         val uiState: StateFlow<AuthFormUiState> = _uiState.asStateFlow()
@@ -181,6 +183,8 @@ class AuthViewModel
                     firebaseAuth.signInWithEmailAndPassword(state.email, state.password).await()
                     if (guestUid != null) guestMigration.onSignedIn()
                     ensureUserProfile()
+                    // A returning user's chosen name wins over whatever the provider reports.
+                    usernameRepository.syncAuthNameIfClaimed()
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthInvalidUserException) {
@@ -237,6 +241,8 @@ class AuthViewModel
                         if (guestUidToMerge != null) guestMigration.onSignedIn()
                     }
                     ensureUserProfile()
+                    // On a new device Google reports its own name; a name already claimed here wins.
+                    if (guest == null) usernameRepository.syncAuthNameIfClaimed()
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {

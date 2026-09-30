@@ -31,6 +31,9 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
+import com.repmate.ui.displayname.ChooseDisplayNameScreen
+import com.repmate.ui.displayname.ChooseNameMode
+import com.repmate.ui.displayname.DisplayNameGateViewModel
 import com.repmate.ui.ghostduel.GhostDuelScreen
 import com.repmate.ui.history.HistoryScreen
 import com.repmate.ui.history.SessionDetailScreen
@@ -75,6 +78,12 @@ object RepMateDestinations {
     const val SIGNUP = "signup"
     const val LOGIN = "login"
     const val ONBOARDING = "onboarding"
+
+    /**
+     * Bare route for the choose-display-name screen, which opens in gate mode (the argument's
+     * default). Used by [afterAuth] and by `popUpTo`. The registered pattern is [CHOOSE_DISPLAY_NAME_PATTERN].
+     */
+    const val CHOOSE_DISPLAY_NAME = "choose_display_name"
     const val HOME = "home"
     const val HISTORY = "history"
     const val LEADERBOARD = "leaderboard"
@@ -89,6 +98,10 @@ object RepMateDestinations {
     const val ARG_EMAIL = "email"
     const val ARG_UPGRADE = "upgrade"
     const val ARG_POST_WORKOUT = "postWorkout"
+    const val ARG_NAME_MODE = "mode"
+
+    /** Choose-display-name's registered route: `mode` is an optional [ChooseNameMode] name, defaulting to the gate. */
+    const val CHOOSE_DISPLAY_NAME_PATTERN = "$CHOOSE_DISPLAY_NAME?$ARG_NAME_MODE={$ARG_NAME_MODE}"
 
     /**
      * Sign up's registered route: `upgrade` is an optional query param defaulting to false, so the
@@ -149,6 +162,9 @@ object RepMateDestinations {
         postWorkout: Boolean = false,
     ) = "session_detail/$sessionId" + if (postWorkout) "?$ARG_POST_WORKOUT=true" else ""
 
+    /** Choose display name in the given [mode] (gate is the bare [CHOOSE_DISPLAY_NAME]). */
+    fun chooseDisplayName(mode: ChooseNameMode): String = "$CHOOSE_DISPLAY_NAME?$ARG_NAME_MODE=${mode.name}"
+
     /** Sign up in guest-upgrade mode: links the new credentials to the current anonymous account. */
     fun signupUpgrade(): String = "$SIGNUP?$ARG_UPGRADE=true"
 
@@ -160,11 +176,21 @@ object RepMateDestinations {
         }
 
     /**
-     * Where a signed-in user goes: Home if they have already been through onboarding, else
-     * Onboarding. The single home of that rule, used both after a sign-in (see
+     * Where a signed-in user goes: first Choose display name if they are a real account without a
+     * claimed name ([needsDisplayName]), else Home if they have already been through onboarding,
+     * else Onboarding. The single home of that rule, used both after a sign-in (see
      * `navigateAfterAuthSuccess`) and at launch for a restored session (see `StartupViewModel`).
+     * Leaving the gate calls this again with `needsDisplayName = false`.
      */
-    fun afterAuth(hasSeenOnboarding: Boolean): String = if (hasSeenOnboarding) HOME else ONBOARDING
+    fun afterAuth(
+        hasSeenOnboarding: Boolean,
+        needsDisplayName: Boolean = false,
+    ): String =
+        when {
+            needsDisplayName -> CHOOSE_DISPLAY_NAME
+            hasSeenOnboarding -> HOME
+            else -> ONBOARDING
+        }
 
     /** The destinations [BottomNavBar] switches between -- these are shown with the bar visible. */
     val BOTTOM_NAV_ROUTES = setOf(HOME, HISTORY, LEADERBOARD, PROFILE)
@@ -226,6 +252,8 @@ fun RepMateNavGraph(
     // one screen -- it's used identically by all three "just authenticated" success callbacks
     // below, not owned by any single one of them.
     val onboardingGateViewModel: OnboardingGateViewModel = hiltViewModel()
+    // Same reasoning: the display-name gate is asked by navigateAfterAuthSuccess, not owned by a screen.
+    val displayNameGateViewModel: DisplayNameGateViewModel = hiltViewModel()
     // Same reasoning as onboardingGateViewModel above: one instance, used by both Home's
     // exercise-chip tap and live_workout's own entry check, rather than each owning a separate
     // "is this exercise calibrated" mechanism.
@@ -306,7 +334,10 @@ fun RepMateNavGraph(
     val navigateAfterAuthSuccess: () -> Unit = {
         coroutineScope.launch {
             val destination =
-                RepMateDestinations.afterAuth(onboardingGateViewModel.hasCurrentUserSeenOnboarding())
+                RepMateDestinations.afterAuth(
+                    hasSeenOnboarding = onboardingGateViewModel.hasCurrentUserSeenOnboarding(),
+                    needsDisplayName = displayNameGateViewModel.needsDisplayName(),
+                )
             navController.navigate(destination) {
                 // Only ever called from Welcome / Sign up / Log in, which are reached only in the
                 // signed-out flow (start destination Welcome, or Profile's sign-out), so Welcome is
@@ -425,7 +456,15 @@ fun RepMateNavGraph(
                     // and Welcome is not on the back stack: just return to Profile, which is
                     // directly beneath this screen. Refreshing its header is Profile's job.
                     onSignUpSuccess = {
-                        if (upgrade) navController.popBackStack() else navigateAfterAuthSuccess()
+                        if (upgrade) {
+                            // The account is real now but has no claimed name: choose one, then
+                            // return to Profile. Replaces Sign up so back from here is Profile.
+                            navController.navigate(RepMateDestinations.chooseDisplayName(ChooseNameMode.UPGRADE)) {
+                                popUpTo(RepMateDestinations.SIGNUP_PATTERN) { inclusive = true }
+                            }
+                        } else {
+                            navigateAfterAuthSuccess()
+                        }
                     },
                     upgrade = upgrade,
                     onSwitchToLogIn = switchToExistingAccount,
@@ -469,6 +508,42 @@ fun RepMateNavGraph(
             ) { backStackEntry ->
                 ForgotPasswordScreen(
                     initialEmail = backStackEntry.arguments?.getString(RepMateDestinations.ARG_EMAIL).orEmpty(),
+                    onBackClick = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = RepMateDestinations.CHOOSE_DISPLAY_NAME_PATTERN,
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_NAME_MODE) {
+                            type = NavType.StringType
+                            defaultValue = ChooseNameMode.GATE.name
+                        },
+                    ),
+            ) { backStackEntry ->
+                val mode = ChooseNameMode.fromArgument(backStackEntry.arguments?.getString(RepMateDestinations.ARG_NAME_MODE))
+                ChooseDisplayNameScreen(
+                    mode = mode,
+                    onFinished = {
+                        if (mode == ChooseNameMode.GATE) {
+                            // Onboarding (if not seen) or Home. Pops this screen itself, like
+                            // Onboarding does: it is the root of the stack, so nothing can go back to it.
+                            coroutineScope.launch {
+                                val destination =
+                                    RepMateDestinations.afterAuth(
+                                        hasSeenOnboarding = onboardingGateViewModel.hasCurrentUserSeenOnboarding(),
+                                        needsDisplayName = false,
+                                    )
+                                navController.navigate(destination) {
+                                    popUpTo(RepMateDestinations.CHOOSE_DISPLAY_NAME_PATTERN) { inclusive = true }
+                                }
+                            }
+                        } else {
+                            // Upgrade and rename both sit on top of Profile.
+                            navController.popBackStack()
+                        }
+                    },
                     onBackClick = { navController.popBackStack() },
                 )
             }
@@ -536,6 +611,9 @@ fun RepMateNavGraph(
                     onRecalibrateClick = { showRecalibratePicker = true },
                     onCreateAccountClick = { navController.navigate(RepMateDestinations.signupUpgrade()) },
                     onSwitchToExistingAccount = switchToExistingAccount,
+                    onEditDisplayNameClick = {
+                        navController.navigate(RepMateDestinations.chooseDisplayName(ChooseNameMode.RENAME))
+                    },
                 )
 
                 if (showRecalibratePicker) {

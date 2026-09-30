@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -50,6 +51,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -107,6 +109,8 @@ import java.util.Locale
  * @param onSwitchToExistingAccount invoked when a guest confirms [SwitchAccountDialog] after tapping
  *   "I already have an account"; the caller navigates to Log in on top of Welcome. Nothing
  *   is signed out here or by the caller: the guest stays the current user until a log-in succeeds.
+ * @param onEditDisplayNameClick invoked when a real account taps the "Display name" row; the caller
+ *   opens the choose-name screen in rename mode. Guests don't see the row.
  * @param onRecalibrateClick invoked when the "Recalibrate" row is tapped. Takes no exercise type:
  *   this screen has no notion of "the current exercise" the way Home's chips do, so the caller
  *   (`NavGraph.kt`) is the one that shows an exercise picker and decides where to navigate once
@@ -118,6 +122,7 @@ fun ProfileScreen(
     onRecalibrateClick: () -> Unit,
     onCreateAccountClick: () -> Unit,
     onSwitchToExistingAccount: () -> Unit,
+    onEditDisplayNameClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -159,6 +164,7 @@ fun ProfileScreen(
         onSignOutClicked = { showSignOutConfirmation = true },
         onCreateAccountClicked = onCreateAccountClick,
         onHaveAccountClicked = { showSwitchAccountDialog = true },
+        onDisplayNameClick = onEditDisplayNameClick,
         onHapticFeedbackToggled = viewModel::onHapticFeedbackToggled,
         onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
@@ -271,6 +277,7 @@ private fun ProfileContent(
     onSignOutClicked: () -> Unit,
     onCreateAccountClicked: () -> Unit,
     onHaveAccountClicked: () -> Unit,
+    onDisplayNameClick: () -> Unit = {},
     onHapticFeedbackToggled: (Boolean) -> Unit,
     onSpokenRepCountToggled: (Boolean) -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
@@ -338,6 +345,11 @@ private fun ProfileContent(
         }
 
         SettingsSection(label = "account") {
+            // A guest has no name to change (they show as "Guest" and never claim one).
+            if (!uiState.isGuest) {
+                SettingsNavigationRow(label = "Display name", value = uiState.name, onClick = onDisplayNameClick)
+                SettingsDivider()
+            }
             SettingsNavigationRow(label = "Friends")
         }
 
@@ -580,6 +592,7 @@ private fun SettingsNavigationRow(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     showChevron: Boolean = true,
+    value: String? = null,
 ) {
     Row(
         modifier =
@@ -600,12 +613,24 @@ private fun SettingsNavigationRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        if (showChevron) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (value != null) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 180.dp),
+                )
+            }
+            if (showChevron) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

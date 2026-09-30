@@ -3,6 +3,9 @@ package com.repmate.ui.navigation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.repmate.data.repo.ClaimStatus
+import com.repmate.data.repo.UsernameRepository
+import com.repmate.data.repo.needsDisplayNameGate
 import com.repmate.ui.onboarding.OnboardingPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -31,6 +34,7 @@ class StartupViewModel
     constructor(
         private val firebaseAuth: FirebaseAuth,
         private val onboardingPreferences: OnboardingPreferences,
+        private val usernameRepository: UsernameRepository,
     ) : ViewModel() {
         private val _startDestination = MutableStateFlow<String?>(null)
         val startDestination: StateFlow<String?> = _startDestination.asStateFlow()
@@ -42,6 +46,8 @@ class StartupViewModel
                         firstAuthState = firebaseAuth.authStateUids(),
                         currentUid = { firebaseAuth.currentUser?.uid },
                         hasSeenOnboarding = onboardingPreferences::hasCompletedOnboarding,
+                        isAnonymous = { firebaseAuth.currentUser?.isAnonymous == true },
+                        claimStatus = { usernameRepository.claimStatus() },
                     )
             }
         }
@@ -82,11 +88,17 @@ private class FirstAuthState(val uid: String?)
  * @param currentUid a direct read of the current user's uid, used only after a timeout.
  * @param hasSeenOnboarding whether that uid has completed onboarding (per-uid, see
  *   [OnboardingPreferences]).
+ * @param isAnonymous whether the signed-in user is a guest; guests skip the display-name gate.
+ * @param claimStatus whether the signed-in user has claimed a display name. Answers from a local
+ *   cache when it can, else one short server read; [ClaimStatus.UNKNOWN] (offline, timeout) never
+ *   gates the user, so being offline cannot trap anyone on the choose-name screen.
  */
 internal suspend fun resolveStartDestination(
     firstAuthState: Flow<String?>,
     currentUid: () -> String?,
     hasSeenOnboarding: suspend (uid: String) -> Boolean,
+    isAnonymous: () -> Boolean,
+    claimStatus: suspend () -> ClaimStatus,
     timeoutMs: Long = AUTH_STATE_TIMEOUT_MS,
 ): String {
     val first = withTimeoutOrNull(timeoutMs) { FirstAuthState(firstAuthState.first()) }
@@ -104,5 +116,23 @@ internal suspend fun resolveStartDestination(
             // local preference read failed. Onboarding is skippable, so it is the safe default.
             false
         }
-    return RepMateDestinations.afterAuth(hasSeenOnboarding = seen)
+
+    val anonymous = isAnonymous()
+    val status =
+        if (anonymous) {
+            ClaimStatus.UNKNOWN
+        } else {
+            try {
+                claimStatus()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Same reasoning as the onboarding read: never strand a signed-in user on the splash.
+                ClaimStatus.UNKNOWN
+            }
+        }
+    return RepMateDestinations.afterAuth(
+        hasSeenOnboarding = seen,
+        needsDisplayName = needsDisplayNameGate(isAnonymous = anonymous, status = status),
+    )
 }
