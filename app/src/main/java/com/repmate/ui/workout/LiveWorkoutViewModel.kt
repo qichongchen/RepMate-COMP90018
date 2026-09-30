@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
@@ -45,6 +46,10 @@ data class LiveWorkoutUiState(
     val elapsedMillis: Long = 0L,
     val lastRepScore: RepScore? = null,
     val isPaused: Boolean = false,
+    /** Mirrors [WorkoutPreferences.isHapticFeedbackEnabled] -- the same global setting as Profile's toggle. */
+    val hapticFeedbackEnabled: Boolean = true,
+    /** Mirrors [WorkoutPreferences.isSpokenRepCountEnabled] -- the same global setting as Profile's toggle. */
+    val spokenRepCountEnabled: Boolean = false,
 )
 
 /**
@@ -95,8 +100,22 @@ class LiveWorkoutViewModel
             workoutPreferences.isSpokenRepCountEnabled
                 .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+        // Everything the workout itself changes. The two feedback settings are deliberately not
+        // written here: they are folded in below from the flows above, so there is one collection
+        // of each preference and the screen's toggles can never disagree with what RepFeedback uses.
         private val _uiState = MutableStateFlow(LiveWorkoutUiState())
-        val uiState: StateFlow<LiveWorkoutUiState> = _uiState.asStateFlow()
+
+        val uiState: StateFlow<LiveWorkoutUiState> =
+            combine(_uiState, hapticFeedbackEnabled, spokenRepCountEnabled) { state, haptic, spoken ->
+                state.copy(hapticFeedbackEnabled = haptic, spokenRepCountEnabled = spoken)
+            }.stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                _uiState.value.copy(
+                    hapticFeedbackEnabled = hapticFeedbackEnabled.value,
+                    spokenRepCountEnabled = spokenRepCountEnabled.value,
+                ),
+            )
 
         private val _workoutFinished = Channel<String>(Channel.BUFFERED)
 
@@ -201,6 +220,16 @@ class LiveWorkoutViewModel
             )
             repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
             _uiState.update { it.copy(repCount = scoredReps.size, lastRepScore = score) }
+        }
+
+        /** Persists the buzz-on-rep setting -- the same one Profile's toggle writes, not a per-session override. */
+        fun onHapticFeedbackToggled(enabled: Boolean) {
+            viewModelScope.launch { workoutPreferences.setHapticFeedbackEnabled(enabled) }
+        }
+
+        /** Persists the spoken-rep-count setting -- the same one Profile's toggle writes, not a per-session override. */
+        fun onSpokenRepCountToggled(enabled: Boolean) {
+            viewModelScope.launch { workoutPreferences.setSpokenRepCountEnabled(enabled) }
         }
 
         fun onPauseResumeClicked() {

@@ -28,8 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +46,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -68,6 +65,7 @@ import com.repmate.ui.components.KeepScreenOn
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.ScreenLockOverlay
 import com.repmate.ui.theme.RepMateTheme
+import com.repmate.ui.workout.FeedbackToggles
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -150,6 +148,8 @@ fun PushupWorkoutScreen(
             onCameraToggled = viewModel::onCameraToggled,
             onMotionLimitsScaled = viewModel::onMotionLimitsScaled,
             onEndWorkoutClicked = viewModel::onEndWorkoutClicked,
+            onHapticFeedbackToggled = viewModel::onHapticFeedbackToggled,
+            onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
             screenLocked = screenLocked,
             onScreenLockToggled = { screenLocked = !screenLocked },
             modifier = modifier,
@@ -260,6 +260,8 @@ private fun PushupWorkoutContent(
     onCameraToggled: () -> Unit,
     onMotionLimitsScaled: (Double) -> Unit,
     onEndWorkoutClicked: () -> Unit,
+    onHapticFeedbackToggled: (Boolean) -> Unit,
+    onSpokenRepCountToggled: (Boolean) -> Unit,
     screenLocked: Boolean,
     onScreenLockToggled: () -> Unit,
     modifier: Modifier = Modifier,
@@ -325,10 +327,16 @@ private fun PushupWorkoutContent(
                         color = Color.White,
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                        FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
-                        FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
-                    }
+                    FeedbackToggles(
+                        hapticEnabled = uiState.hapticFeedbackEnabled,
+                        spokenEnabled = uiState.spokenRepCountEnabled,
+                        onHapticToggled = onHapticFeedbackToggled,
+                        onSpokenToggled = onSpokenRepCountToggled,
+                        // Off while locked so a pocket touch (or an accessibility action) can't flip them.
+                        enabled = !screenLocked,
+                        // White, like the rest of this overlay, to stay legible over the camera preview.
+                        tint = Color.White,
+                    )
                     if (BuildConfig.DEBUG) {
                         uiState.motion?.let {
                             Spacer(modifier = Modifier.height(16.dp))
@@ -511,19 +519,7 @@ private fun MotionDebugReadout(
 
 private const val LIMIT_STEP = 1.25
 
-@Composable
-private fun FeedbackIndicator(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(text = label, style = MaterialTheme.typography.labelLarge, color = Color.White)
-    }
-}
-
+// Buzz on, spoken off: the app's defaults.
 private val PREVIEW_STATE =
     PushupWorkoutUiState(
         repCount = 6,
@@ -545,6 +541,8 @@ private fun PushupWorkoutTrackingPreview() {
             onCameraToggled = {},
             onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             screenLocked = false,
             onScreenLockToggled = {},
         )
@@ -562,6 +560,8 @@ private fun PushupWorkoutFindingArmPreview() {
             onCameraToggled = {},
             onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             screenLocked = false,
             onScreenLockToggled = {},
         )
@@ -579,6 +579,8 @@ private fun PushupWorkoutScreenLockedPreview() {
             onCameraToggled = {},
             onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             screenLocked = true,
             onScreenLockToggled = {},
         )
@@ -596,6 +598,8 @@ private fun PushupWorkoutPhoneMovingPreview() {
             onCameraToggled = {},
             onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             screenLocked = false,
             onScreenLockToggled = {},
         )
@@ -618,6 +622,8 @@ private fun PushupWorkoutNoPersonFrontPreview() {
             onCameraToggled = {},
             onMotionLimitsScaled = {},
             onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             screenLocked = false,
             onScreenLockToggled = {},
         )
@@ -629,5 +635,43 @@ private fun PushupWorkoutNoPersonFrontPreview() {
 private fun PushupWorkoutPermissionRationalePreview() {
     RepMateTheme {
         CameraPermissionRationale(onGrantClicked = {})
+    }
+}
+
+@Preview(name = "Push-up workout - feedback both on", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun PushupWorkoutFeedbackOnPreview() {
+    RepMateTheme {
+        PushupWorkoutContent(
+            uiState = PREVIEW_STATE.copy(hapticFeedbackEnabled = true, spokenRepCountEnabled = true),
+            previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
+            onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
+            screenLocked = false,
+            onScreenLockToggled = {},
+        )
+    }
+}
+
+@Preview(name = "Push-up workout - feedback both off", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun PushupWorkoutFeedbackOffPreview() {
+    RepMateTheme {
+        PushupWorkoutContent(
+            uiState = PREVIEW_STATE.copy(hapticFeedbackEnabled = false, spokenRepCountEnabled = false),
+            previewView = null,
+            canSwitchCamera = true,
+            onCameraToggled = {},
+            onMotionLimitsScaled = {},
+            onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
+            screenLocked = false,
+            onScreenLockToggled = {},
+        )
     }
 }

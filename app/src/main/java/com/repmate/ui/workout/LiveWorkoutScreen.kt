@@ -23,8 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,7 +40,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
@@ -110,6 +107,8 @@ fun LiveWorkoutScreen(
         uiState = uiState,
         onPauseResumeClicked = viewModel::onPauseResumeClicked,
         onEndWorkoutClicked = viewModel::onEndWorkoutClicked,
+        onHapticFeedbackToggled = viewModel::onHapticFeedbackToggled,
+        onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
         screenLocked = screenLocked,
         onScreenLockToggled = { screenLocked = !screenLocked },
         modifier = modifier,
@@ -121,6 +120,8 @@ private fun LiveWorkoutContent(
     uiState: LiveWorkoutUiState,
     onPauseResumeClicked: () -> Unit,
     onEndWorkoutClicked: () -> Unit,
+    onHapticFeedbackToggled: (Boolean) -> Unit,
+    onSpokenRepCountToggled: (Boolean) -> Unit,
     screenLocked: Boolean,
     onScreenLockToggled: () -> Unit,
     modifier: Modifier = Modifier,
@@ -164,10 +165,15 @@ private fun LiveWorkoutContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                    FeedbackIndicator(icon = Icons.Filled.Vibration, label = "buzz on rep")
-                    FeedbackIndicator(icon = Icons.Filled.RecordVoiceOver, label = "beep count")
-                }
+                FeedbackToggles(
+                    hapticEnabled = uiState.hapticFeedbackEnabled,
+                    spokenEnabled = uiState.spokenRepCountEnabled,
+                    onHapticToggled = onHapticFeedbackToggled,
+                    onSpokenToggled = onSpokenRepCountToggled,
+                    // Off while locked so a pocket touch (or an accessibility action) can't flip them.
+                    enabled = !screenLocked,
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
                 Spacer(modifier = Modifier.height(24.dp))
                 LastRepFeedbackBox(repCount = uiState.repCount, lastRepScore = uiState.lastRepScore)
             }
@@ -315,34 +321,6 @@ private fun RepProgressRing(
 }
 
 @Composable
-private fun FeedbackIndicator(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-) {
-    // Visual markers only -- see LiveWorkoutViewModel/RepFeedback for the real triggers. Static
-    // by design: not driven by any per-rep UI state, since a fired-or-not flag for a one-shot
-    // effect isn't state worth modelling.
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp),
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun LastRepFeedbackBox(
     repCount: Int,
     lastRepScore: RepScore?,
@@ -401,6 +379,7 @@ private fun formatElapsed(elapsedMillis: Long): String {
     return "%02d:%02d".format(Locale.US, minutes, seconds)
 }
 
+// Buzz on, spoken off: the app's defaults.
 private val SQUAT_PREVIEW_STATE =
     LiveWorkoutUiState(
         exercise = ExerciseType.SQUAT,
@@ -422,7 +401,7 @@ private val SQUAT_PREVIEW_STATE =
 @Composable
 private fun LiveWorkoutSquatLightPreview() {
     RepMateTheme(darkTheme = false) {
-        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
+        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, onHapticFeedbackToggled = {}, onSpokenRepCountToggled = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -430,7 +409,7 @@ private fun LiveWorkoutSquatLightPreview() {
 @Composable
 private fun LiveWorkoutSquatDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
+        LiveWorkoutContent(uiState = SQUAT_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, onHapticFeedbackToggled = {}, onSpokenRepCountToggled = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -441,6 +420,8 @@ private val JUMPING_JACK_PAUSED_PREVIEW_STATE =
         phase = RepPhase.IDLE,
         elapsedMillis = 42_000L,
         isPaused = true,
+        hapticFeedbackEnabled = true,
+        spokenRepCountEnabled = true,
         lastRepScore =
             RepScore(
                 repIndex = 6,
@@ -456,7 +437,7 @@ private val JUMPING_JACK_PAUSED_PREVIEW_STATE =
 @Composable
 private fun LiveWorkoutJumpingJackPausedLightPreview() {
     RepMateTheme(darkTheme = false) {
-        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
+        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, onHapticFeedbackToggled = {}, onSpokenRepCountToggled = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -464,7 +445,7 @@ private fun LiveWorkoutJumpingJackPausedLightPreview() {
 @Composable
 private fun LiveWorkoutJumpingJackPausedDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, screenLocked = false, onScreenLockToggled = {})
+        LiveWorkoutContent(uiState = JUMPING_JACK_PAUSED_PREVIEW_STATE, onPauseResumeClicked = {}, onEndWorkoutClicked = {}, onHapticFeedbackToggled = {}, onSpokenRepCountToggled = {}, screenLocked = false, onScreenLockToggled = {})
     }
 }
 
@@ -476,7 +457,25 @@ private fun LiveWorkoutSquatLockedDarkPreview() {
             uiState = SQUAT_PREVIEW_STATE,
             onPauseResumeClicked = {},
             onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
             screenLocked = true,
+            onScreenLockToggled = {},
+        )
+    }
+}
+
+@Preview(name = "Squat - Feedback both off - Dark", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun LiveWorkoutSquatFeedbackOffDarkPreview() {
+    RepMateTheme(darkTheme = true) {
+        LiveWorkoutContent(
+            uiState = SQUAT_PREVIEW_STATE.copy(hapticFeedbackEnabled = false, spokenRepCountEnabled = false),
+            onPauseResumeClicked = {},
+            onEndWorkoutClicked = {},
+            onHapticFeedbackToggled = {},
+            onSpokenRepCountToggled = {},
+            screenLocked = false,
             onScreenLockToggled = {},
         )
     }
