@@ -111,6 +111,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    // SplashScreen compat: holds the system splash until StartupViewModel has resolved the start
+    // destination, so a signed-in user never sees a Welcome flash.
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     // Coroutines + Flow: the engine consumes a Flow<MotionFrame> and DeviceSensorSource
     // builds one with callbackFlow. The -android artifact adds Dispatchers.Main on top of

@@ -132,6 +132,13 @@ object RepMateDestinations {
             "forgot_password?$ARG_EMAIL=${Uri.encode(email)}"
         }
 
+    /**
+     * Where a signed-in user goes: Home if they have already been through onboarding, else
+     * Onboarding. The single home of that rule, used both after a sign-in (see
+     * `navigateAfterAuthSuccess`) and at launch for a restored session (see `StartupViewModel`).
+     */
+    fun afterAuth(hasSeenOnboarding: Boolean): String = if (hasSeenOnboarding) HOME else ONBOARDING
+
     /** The destinations [BottomNavBar] switches between -- these are shown with the bar visible. */
     val BOTTOM_NAV_ROUTES = setOf(HOME, HISTORY, LEADERBOARD, PROFILE)
 }
@@ -174,9 +181,14 @@ private fun String?.toBottomNavItemOrNull(): BottomNavItem? =
  * The bottom nav bar is hosted here, in a [Scaffold] wrapping the [NavHost], rather than inside
  * each of home/history/leaderboard/profile individually -- it only shows for those four routes,
  * driven by the current back stack entry, so screens like welcome or live_workout don't get it.
+ *
+ * [startDestination] is resolved before this is composed (see [StartupViewModel]): Welcome for a
+ * signed-out user, otherwise Home or Onboarding. So Welcome is only on the back stack in the
+ * signed-out flow, and anything that pops "the auth screens" must not assume it is there.
  */
 @Composable
 fun RepMateNavGraph(
+    startDestination: String,
     navController: NavHostController = rememberNavController(),
     modifier: Modifier = Modifier,
 ) {
@@ -239,12 +251,12 @@ fun RepMateNavGraph(
     val navigateAfterAuthSuccess: () -> Unit = {
         coroutineScope.launch {
             val destination =
-                if (onboardingGateViewModel.hasCurrentUserSeenOnboarding()) {
-                    RepMateDestinations.HOME
-                } else {
-                    RepMateDestinations.ONBOARDING
-                }
+                RepMateDestinations.afterAuth(onboardingGateViewModel.hasCurrentUserSeenOnboarding())
             navController.navigate(destination) {
+                // Only ever called from Welcome / Sign up / Log in, which are reached only in the
+                // signed-out flow (start destination Welcome, or Profile's sign-out), so Welcome is
+                // always on the stack here and popping it inclusive also drops the auth screens
+                // above it.
                 popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
             }
         }
@@ -296,7 +308,7 @@ fun RepMateNavGraph(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = RepMateDestinations.WELCOME,
+            startDestination = startDestination,
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(RepMateDestinations.WELCOME) {
@@ -364,7 +376,10 @@ fun RepMateNavGraph(
                         // live_workout check below), not as a blanket step after onboarding. If that
                         // policy ever changes, this is the one line to edit.
                         navController.navigate(RepMateDestinations.HOME) {
-                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                            // Pops Onboarding itself, not Welcome: a signed-in user launched
+                            // straight into Onboarding has no Welcome on the back stack, so popping
+                            // it would do nothing and back from Home would return here.
+                            popUpTo(RepMateDestinations.ONBOARDING) { inclusive = true }
                         }
                     },
                 )
@@ -542,6 +557,6 @@ fun RepMateNavGraph(
 @Composable
 private fun RepMateNavGraphPreview() {
     RepMateTheme {
-        RepMateNavGraph()
+        RepMateNavGraph(startDestination = RepMateDestinations.WELCOME)
     }
 }
