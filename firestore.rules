@@ -1,0 +1,73 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Leaderboard
+    match /leaderboard/{userId} {
+      allow read: if request.auth != null;
+    }
+
+    // User Profile
+    match /users/{userId} {
+      allow get: if request.auth != null;
+      allow list: if false;
+
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys()
+          .hasOnly(["displayName", "createdAt"])
+        && request.resource.data.keys()
+          .hasAll(["displayName", "createdAt"])
+        && request.resource.data.displayName is string
+        && request.resource.data.createdAt is timestamp;
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(["displayName"])
+        && request.resource.data.displayName is string;
+
+      allow delete: if false;
+    }
+
+    // Workout Sessions
+    match /users/{userId}/workoutSessions/{sessionId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    // Friends
+    match /users/{userId}/friends/{friendId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    // Ghost Duel shared scores
+    match /users/{userId}/ghostScores/{exercise} {
+      allow get: if request.auth != null;
+      allow list: if false;
+
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && exercise in ["SQUAT", "PUSHUP", "JUMPING_JACK"]
+        && request.resource.data.keys().hasAll([
+          "exercise", "averageScore", "repCount", "startedAt"
+        ])
+        && request.resource.data.keys().hasOnly([
+          "exercise", "averageScore", "repCount", "startedAt"
+        ])
+        && request.resource.data.exercise == exercise
+        && request.resource.data.averageScore is number
+        && request.resource.data.averageScore >= 0
+        && request.resource.data.averageScore <= 10
+        && request.resource.data.repCount is int
+        && request.resource.data.repCount > 0
+        && request.resource.data.startedAt is int;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == userId;
+    }
+  }
+}

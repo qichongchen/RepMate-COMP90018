@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun LeaderboardScreen(
+    onGhostDuelClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LeaderboardViewModel = hiltViewModel(),
 ) {
@@ -138,6 +140,10 @@ fun LeaderboardScreen(
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(
+                    onClickLabel = "Start a ghost duel",
+                    onClick = onGhostDuelClick
+                )
                 .padding(vertical = 20.dp),
         )
     }

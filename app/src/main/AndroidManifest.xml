@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <!-- Required for Firebase Authentication and Firestore -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Live Workout's rep-detected haptic buzz (see com.repmate.ui.workout.RepFeedback). A
          normal, not dangerous, permission: granted at install, no runtime prompt needed. -->
@@ -14,6 +16,7 @@
     <uses-feature
         android:name="android.hardware.camera.any"
         android:required="false" />
+
 
     <!-- Safety check-in (com.repmate.safety), opted into from Profile. All three are dangerous
          and requested at runtime with the disclaimer/rationale in ProfileScreen; SEND_SMS is the

@@ -393,7 +393,13 @@ fun RepMateNavGraph(
                     },
                 )
             }
-            composable(RepMateDestinations.LEADERBOARD) { LeaderboardScreen()}
+            composable(RepMateDestinations.LEADERBOARD) {
+                LeaderboardScreen(
+                    onGhostDuelClick = {
+                        navController.navigate(RepMateDestinations.GHOST_DUEL)
+                    }
+                )
+            }
             composable(RepMateDestinations.PROFILE) {
                 // Local to this destination, not hoisted to RepMateNavGraph level like
                 // onboardingGateViewModel/calibrationGateViewModel above -- nothing outside this one

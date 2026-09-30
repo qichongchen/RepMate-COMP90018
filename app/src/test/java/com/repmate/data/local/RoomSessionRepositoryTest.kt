@@ -180,6 +180,121 @@ class RoomSessionRepositoryTest {
         assertEquals(1, user1Result.size)
         assertEquals("user1-session", user1Result[0].id)
     }
+
+
+    @Test
+    fun getMyBestScoreReturnsHighestAverage() = runTest {
+        val fakeDao = FakeSessionDao()
+        val repository = RoomSessionRepository(
+            fakeDao,
+            FakeAuthRepository("user-1")
+        )
+
+        suspend fun saveSession(id: String, score: Float) {
+            repository.save(
+                WorkoutSession(
+                    id = id,
+                    exercise = ExerciseType.SQUAT,
+                    startedAt = 1000L,
+                    reps = listOf(
+                        RepScore(
+                            repIndex = 1,
+                            score = score,
+                            tempoSeconds = 2.0f,
+                            rangePercent = 90,
+                            pauseSeconds = 0.3f,
+                            reasons = emptyList()
+                        )
+                    )
+                )
+            )
+        }
+
+        saveSession("session-1", 7.0f)
+        saveSession("session-2", 9.0f)
+        saveSession("session-3", 8.0f)
+
+        val result = repository.getMyBestScore(
+            ExerciseType.SQUAT
+        )
+
+        assertEquals(9.0f, result?.score)
+        assertEquals(1, result?.reps)
+    }
+
+    @Test
+    fun getMyBestScoreReturnsNullWhenNoEligibleSession() = runTest {
+        val repository = RoomSessionRepository(
+            FakeSessionDao(),
+            FakeAuthRepository("user-1")
+        )
+
+        assertEquals(
+            null,
+            repository.getMyBestScore(ExerciseType.SQUAT)
+        )
+
+        repository.save(
+            WorkoutSession(
+                id = "empty-session",
+                exercise = ExerciseType.SQUAT,
+                startedAt = 1000L,
+                reps = emptyList()
+            )
+        )
+
+        assertEquals(
+            null,
+            repository.getMyBestScore(ExerciseType.SQUAT)
+        )
+    }
+
+    @Test
+    fun getMyBestScoreOnlyReturnsCurrentUserScore() = runTest {
+        val fakeDao = FakeSessionDao()
+        val fakeAuth = FakeAuthRepository("user-1")
+        val repository = RoomSessionRepository(
+            fakeDao,
+            fakeAuth
+        )
+
+        suspend fun saveSession(id: String, score: Float) {
+            repository.save(
+                WorkoutSession(
+                    id = id,
+                    exercise = ExerciseType.SQUAT,
+                    startedAt = 1000L,
+                    reps = listOf(
+                        RepScore(
+                            repIndex = 1,
+                            score = score,
+                            tempoSeconds = 2.0f,
+                            rangePercent = 90,
+                            pauseSeconds = 0.3f,
+                            reasons = emptyList()
+                        )
+                    )
+                )
+            )
+        }
+
+        saveSession("user1-session", 7.0f)
+
+        fakeAuth.setCurrentUserId("user-2")
+        saveSession("user2-session", 9.0f)
+
+        assertEquals(
+            9.0f,
+            repository.getMyBestScore(ExerciseType.SQUAT)?.score
+        )
+
+        fakeAuth.setCurrentUserId("user-1")
+
+        assertEquals(
+            7.0f,
+            repository.getMyBestScore(ExerciseType.SQUAT)?.score
+        )
+    }
 }
 
 private class FakeSessionDao : SessionDao {
@@ -224,6 +339,45 @@ private class FakeSessionDao : SessionDao {
             it.id == id && it.ownerId == ownerId
         }
     }
+
+    override suspend fun getBestSessionScore(
+        ownerId: String,
+        exercise: String
+    ): BestSessionResult? {
+        return sessions.value
+            .asSequence()
+            .filter {
+                it.ownerId == ownerId &&
+                        it.exercise == exercise
+            }
+            .mapNotNull { session ->
+                val reps = repScores[session.id].orEmpty()
+
+                if (reps.isEmpty()) {
+                    null
+                } else {
+                    val averageScore = reps
+                        .map { it.score.toDouble() }
+                        .average()
+
+                    session to BestSessionResult(
+                        averageScore = averageScore.toFloat(),
+                        repCount = reps.size
+                    )
+                }
+            }
+            .sortedWith(
+                compareByDescending<
+                        Pair<WorkoutSessionEntity, BestSessionResult>
+                        > { it.second.averageScore }
+                    .thenByDescending { it.second.repCount }
+                    .thenByDescending { it.first.startedAt }
+            )
+            .firstOrNull()
+            ?.second
+    }
+
+
 
     override suspend fun getRepScores(
         sessionId: String

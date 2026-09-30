@@ -4,9 +4,11 @@ import android.util.Log
 import com.example.repmate.data.auth.AuthRepository
 import com.repmate.data.cloud.FirestoreWorkoutDataSource
 import com.repmate.data.local.RoomSessionRepository
+import com.repmate.data.repo.BestWorkoutScore
 import com.repmate.data.repo.SessionRepository
 import com.repmate.data.cloud.toRoomRepScores
 import com.repmate.data.cloud.toRoomSession
+import com.repmate.engine.ExerciseType
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -45,6 +47,11 @@ class SyncingSessionRepository @Inject constructor(
 
     override suspend fun getById(id: String): WorkoutSession? =
         roomRepository.getById(id)
+
+    override suspend fun getMyBestScore(
+        exercise: ExerciseType
+    ): BestWorkoutScore? =
+        roomRepository.getMyBestScore(exercise)
 
     suspend fun restoreMissingSessions(): Result<Int> {
         val userId = authRepository.getCurrentUserId()
