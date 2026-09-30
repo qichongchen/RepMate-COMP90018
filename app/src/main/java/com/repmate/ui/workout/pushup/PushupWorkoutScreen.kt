@@ -96,8 +96,8 @@ import java.util.concurrent.Executors
  * part of [PushupWorkoutUiState], so the screen always opens unlocked.
  *
  * @param onWorkoutFinished invoked once, with the session's id, once "End workout" has actually
- *   saved it -- the caller decides what route that leads to (Motion Replay), same contract as
- *   `LiveWorkoutScreen`.
+ *   saved it -- the caller decides what route that leads to (the post-workout summary, i.e.
+ *   Session Detail in post-workout mode), same contract as `LiveWorkoutScreen`.
  */
 @Composable
 fun PushupWorkoutScreen(

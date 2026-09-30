@@ -342,6 +342,7 @@ class PushupWorkoutViewModel
                     id = sessionId,
                     exercise = ExerciseType.PUSHUP,
                     startedAt = startedAtWallClockMs,
+                    endedAt = System.currentTimeMillis(),
                     reps = scoredReps.toList(),
                     // No MotionFrame data exists for a camera workout -- see WorkoutSession's own
                     // KDoc on why this field is nullable. MotionReplay already handles a session

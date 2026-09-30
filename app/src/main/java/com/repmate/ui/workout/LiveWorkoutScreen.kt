@@ -79,7 +79,8 @@ import java.util.Locale
  * @param exerciseType parsed by the caller (`NavGraph.kt`) from the `live_workout/{exerciseType}`
  *   route, the same pattern `CalibrationScreen` uses.
  * @param onWorkoutFinished invoked once, with the session's id, once "End workout" has actually
- *   saved it -- the caller decides what route that leads to (Motion Replay).
+ *   saved it -- the caller decides what route that leads to (the post-workout summary, i.e.
+ *   Session Detail in post-workout mode).
  */
 @Composable
 fun LiveWorkoutScreen(
