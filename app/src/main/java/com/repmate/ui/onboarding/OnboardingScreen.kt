@@ -67,17 +67,22 @@ private val ONBOARDING_PAGES =
         OnboardingPage(
             title = "Count reps automatically",
             body =
-                "RepMate uses your phone's accelerometer and gyroscope to count reps as you move.",
+                "Squats and jumping jacks use your phone's motion sensors while it's in your pocket. " +
+                    "Push-ups use the camera.",
             icon = { modifier -> AutoRepCountIcon(modifier) },
         ),
         OnboardingPage(
             title = "Score your form",
-            body = "See how clean each rep is: range of motion, tempo, and consistency, not just a number.",
+            body =
+                "Squats and jumping jacks are scored on range of motion, tempo and consistency. " +
+                    "Push-up scoring is coming soon.",
             icon = { modifier -> ChartLineIcon(modifier) },
         ),
         OnboardingPage(
-            title = "Replay every rep",
-            body = "Step through your session rep by rep and see exactly what changed.",
+            title = "Review every rep",
+            body =
+                "After each workout, step through your session rep by rep and see how each one " +
+                    "scored and what to improve.",
             icon = { modifier -> PlayScrubberIcon(modifier) },
         ),
     )
