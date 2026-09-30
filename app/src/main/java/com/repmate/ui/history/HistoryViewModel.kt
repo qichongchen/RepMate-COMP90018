@@ -2,7 +2,9 @@ package com.repmate.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.repmate.data.repo.SessionRepository
+import com.repmate.data.sync.SyncingSessionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,15 +25,41 @@ class HistoryViewModel
 @Inject
 constructor(
     private val sessionRepository: SessionRepository,
+    private val syncingSessionRepository: SyncingSessionRepository,
 ) : ViewModel() {
+
+    private companion object {
+        const val TAG = "HistoryViewModel"
+    }
 
     private val _uiState = MutableStateFlow(HistoryUiState())
     val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
 
     init {
+        // Keep observing Room, even when cloud restore fails.
         viewModelScope.launch {
-            sessionRepository.recent(HISTORY_SESSION_LIMIT).collect { sessions ->
-                _uiState.value = HistoryUiState(sections = groupSessionsIntoSections(sessions), isLoading = false)
+            sessionRepository.recent(HISTORY_SESSION_LIMIT)
+                .collect { sessions ->
+                    _uiState.value = HistoryUiState(
+                        sections = groupSessionsIntoSections(sessions),
+                        isLoading = false
+                    )
+                }
+        }
+
+        // Restore missing cloud sessions without blocking local History.
+        viewModelScope.launch {
+            try {
+                syncingSessionRepository.restoreMissingSessions()
+                    .onFailure { error ->
+                        Log.w(
+                            TAG,
+                            "Failed to restore History from Firestore",
+                            error
+                        )
+                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "Unexpected History restore failure", e)
             }
         }
     }
