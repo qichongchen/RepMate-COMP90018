@@ -7,4 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Matches CharcoalBackground in ui/theme/Color.kt: the app defaults to dark, so the splash
+         must too or a white frame shows between splash and first composition. -->
+    <color name="splash_background">#FF121212</color>
 </resources>

@@ -1,6 +1,7 @@
 package com.repmate.ui.navigation
 
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -15,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -70,6 +70,8 @@ enum class CalibrationEntryPoint {
  */
 object RepMateDestinations {
     const val WELCOME = "welcome"
+
+    /** Bare route, used by every `navigate(...)` call to Sign up and by `popUpTo`. The registered pattern is [SIGNUP_PATTERN]. */
     const val SIGNUP = "signup"
     const val LOGIN = "login"
     const val ONBOARDING = "onboarding"
@@ -85,6 +87,15 @@ object RepMateDestinations {
     const val ARG_CALIBRATION_ENTRY_POINT = "entryPoint"
     const val ARG_SESSION_ID = "sessionId"
     const val ARG_EMAIL = "email"
+    const val ARG_UPGRADE = "upgrade"
+    const val ARG_POST_WORKOUT = "postWorkout"
+
+    /**
+     * Sign up's registered route: `upgrade` is an optional query param defaulting to false, so the
+     * bare [SIGNUP] route keeps working for everyone. `upgrade=true` (see [signupUpgrade]) is the
+     * guest-upgrade mode reached from Profile.
+     */
+    const val SIGNUP_PATTERN = "signup?$ARG_UPGRADE={$ARG_UPGRADE}"
 
     /**
      * Route patterns for [NavHost]'s `composable(route = ...)` registration. `CALIBRATION` carries
@@ -101,10 +112,19 @@ object RepMateDestinations {
      * `onExerciseSelected` below for why push-ups get their own route instead of sharing this one.
      */
     const val PUSHUP_WORKOUT = "pushup_workout"
+
+    /**
+     * Reached only from the "Review reps" button on Session Detail's post-workout summary, never
+     * directly from a workout or from History. Back returns to that summary.
+     */
     const val MOTION_REPLAY = "motion_replay/{$ARG_SESSION_ID}"
 
-    /** Reached only from a History card tap -- see the `HISTORY` composable below. Distinct from [MOTION_REPLAY], which is reached only from the post-workout summary (see that route's own KDoc in `RepMateNavGraph`). */
-    const val SESSION_DETAIL = "session_detail/{$ARG_SESSION_ID}"
+    /**
+     * One session's detail, in two modes selected by the optional [ARG_POST_WORKOUT] query param
+     * (default false): reached from a History card tap as plain detail, or from a finished workout
+     * as the post-workout summary (see [sessionDetail]). Optional so History's route is unchanged.
+     */
+    const val SESSION_DETAIL = "session_detail/{$ARG_SESSION_ID}?$ARG_POST_WORKOUT={$ARG_POST_WORKOUT}"
 
     /**
      * `email` is an optional query param (`?email={email}`), not a required path segment: this
@@ -123,7 +143,14 @@ object RepMateDestinations {
 
     fun motionReplay(sessionId: String) = "motion_replay/$sessionId"
 
-    fun sessionDetail(sessionId: String) = "session_detail/$sessionId"
+    /** The query param is omitted when false, so a History tap builds exactly the route it always did. */
+    fun sessionDetail(
+        sessionId: String,
+        postWorkout: Boolean = false,
+    ) = "session_detail/$sessionId" + if (postWorkout) "?$ARG_POST_WORKOUT=true" else ""
+
+    /** Sign up in guest-upgrade mode: links the new credentials to the current anonymous account. */
+    fun signupUpgrade(): String = "$SIGNUP?$ARG_UPGRADE=true"
 
     fun forgotPassword(email: String? = null): String =
         if (email.isNullOrBlank()) {
@@ -131,6 +158,13 @@ object RepMateDestinations {
         } else {
             "forgot_password?$ARG_EMAIL=${Uri.encode(email)}"
         }
+
+    /**
+     * Where a signed-in user goes: Home if they have already been through onboarding, else
+     * Onboarding. The single home of that rule, used both after a sign-in (see
+     * `navigateAfterAuthSuccess`) and at launch for a restored session (see `StartupViewModel`).
+     */
+    fun afterAuth(hasSeenOnboarding: Boolean): String = if (hasSeenOnboarding) HOME else ONBOARDING
 
     /** The destinations [BottomNavBar] switches between -- these are shown with the bar visible. */
     val BOTTOM_NAV_ROUTES = setOf(HOME, HISTORY, LEADERBOARD, PROFILE)
@@ -174,9 +208,14 @@ private fun String?.toBottomNavItemOrNull(): BottomNavItem? =
  * The bottom nav bar is hosted here, in a [Scaffold] wrapping the [NavHost], rather than inside
  * each of home/history/leaderboard/profile individually -- it only shows for those four routes,
  * driven by the current back stack entry, so screens like welcome or live_workout don't get it.
+ *
+ * [startDestination] is resolved before this is composed (see [StartupViewModel]): Welcome for a
+ * signed-out user, otherwise Home or Onboarding. So Welcome is only on the back stack in the
+ * signed-out flow, and anything that pops "the auth screens" must not assume it is there.
  */
 @Composable
 fun RepMateNavGraph(
+    startDestination: String,
     navController: NavHostController = rememberNavController(),
     modifier: Modifier = Modifier,
 ) {
@@ -239,12 +278,12 @@ fun RepMateNavGraph(
     val navigateAfterAuthSuccess: () -> Unit = {
         coroutineScope.launch {
             val destination =
-                if (onboardingGateViewModel.hasCurrentUserSeenOnboarding()) {
-                    RepMateDestinations.HOME
-                } else {
-                    RepMateDestinations.ONBOARDING
-                }
+                RepMateDestinations.afterAuth(onboardingGateViewModel.hasCurrentUserSeenOnboarding())
             navController.navigate(destination) {
+                // Only ever called from Welcome / Sign up / Log in, which are reached only in the
+                // signed-out flow (start destination Welcome, or Profile's sign-out), so Welcome is
+                // always on the stack here and popping it inclusive also drops the auth screens
+                // above it.
                 popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
             }
         }
@@ -268,6 +307,41 @@ fun RepMateNavGraph(
         }
     }
 
+    // Shared by the bottom bar and any in-screen shortcut to a tab (e.g. History's empty state
+    // sending the user to Home, or the post-workout summary's "Done"), so all switch tabs
+    // identically: the tab highlights correctly and the back stack doesn't grow.
+    val navigateToBottomNavRoute: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
+            // is already on, and restore each tab's state when they switch back to it.
+            // NOTE: pops to HOME, not findStartDestination(). The graph's start destination is
+            // fixed at launch, so for a user who signed in this session it is Welcome, which is no
+            // longer on the back stack -- the pop would then silently do nothing and a second Home
+            // would stack on top of whatever screen "Done" was pressed from. HOME is always the
+            // root of the signed-in back stack (see navigateAfterAuthSuccess and Onboarding).
+            popUpTo(RepMateDestinations.HOME) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    // Leaves the post-workout summary for Home. Deliberately not navigateToBottomNavRoute: that helper
+    // is for tab switching, and its navigate(HOME) { popUpTo(HOME) ...; launchSingleTop; restoreState }
+    // combination is unreliable when the top entry is the summary (it can leave the summary on the stack).
+    // NOTE: try the plain pop first -- it removes the summary and anything above the existing Home entry
+    // without recreating Home. Only if Home isn't on the stack do we reset to a single fresh Home.
+    // Returns popBackStack's result: true if Home was already on the stack, false if the fallback ran.
+    val navigateHomeAfterWorkout: () -> Boolean = {
+        val poppedToHome = navController.popBackStack(RepMateDestinations.HOME, inclusive = false)
+        if (!poppedToHome) {
+            navController.navigate(RepMateDestinations.HOME) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+        poppedToHome
+    }
+
     Scaffold(
         modifier = modifier,
         bottomBar = {
@@ -282,13 +356,7 @@ fun RepMateNavGraph(
                                 BottomNavItem.Leaderboard -> RepMateDestinations.LEADERBOARD
                                 BottomNavItem.Profile -> RepMateDestinations.PROFILE
                             }
-                        navController.navigate(route) {
-                            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
-                            // is already on, and restore each tab's state when they switch back to it.
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        navigateToBottomNavRoute(route)
                     },
                 )
             }
@@ -296,7 +364,7 @@ fun RepMateNavGraph(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = RepMateDestinations.WELCOME,
+            startDestination = startDestination,
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(RepMateDestinations.WELCOME) {
@@ -306,15 +374,31 @@ fun RepMateNavGraph(
                     onGuestSignInSuccess = navigateAfterAuthSuccess,
                 )
             }
-            composable(RepMateDestinations.SIGNUP) {
+            composable(
+                route = RepMateDestinations.SIGNUP_PATTERN,
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_UPGRADE) {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        },
+                    ),
+            ) { backStackEntry ->
+                val upgrade = backStackEntry.arguments?.getBoolean(RepMateDestinations.ARG_UPGRADE) ?: false
                 SignUpScreen(
                     onBackClick = { navController.popBackStack() },
-                    onSignUpSuccess = navigateAfterAuthSuccess,
+                    // An upgrade keeps the same account, so there is no onboarding decision to make
+                    // and Welcome is not on the back stack: just return to Profile, which is
+                    // directly beneath this screen. Refreshing its header is Profile's job.
+                    onSignUpSuccess = {
+                        if (upgrade) navController.popBackStack() else navigateAfterAuthSuccess()
+                    },
+                    upgrade = upgrade,
                     onLogInClick = {
                         // Replaces this screen on the back stack rather than stacking on top of
                         // it, so back from Log in returns to Welcome, not bounces through Signup.
                         navController.navigate(RepMateDestinations.LOGIN) {
-                            popUpTo(RepMateDestinations.SIGNUP) { inclusive = true }
+                            popUpTo(RepMateDestinations.SIGNUP_PATTERN) { inclusive = true }
                         }
                     },
                 )
@@ -364,7 +448,10 @@ fun RepMateNavGraph(
                         // live_workout check below), not as a blanket step after onboarding. If that
                         // policy ever changes, this is the one line to edit.
                         navController.navigate(RepMateDestinations.HOME) {
-                            popUpTo(RepMateDestinations.WELCOME) { inclusive = true }
+                            // Pops Onboarding itself, not Welcome: a signed-in user launched
+                            // straight into Onboarding has no Welcome on the back stack, so popping
+                            // it would do nothing and back from Home would return here.
+                            popUpTo(RepMateDestinations.ONBOARDING) { inclusive = true }
                         }
                     },
                 )
@@ -391,6 +478,9 @@ fun RepMateNavGraph(
                     onSessionClick = { sessionId ->
                         navController.navigate(RepMateDestinations.sessionDetail(sessionId))
                     },
+                    // Home is where the exercise chips live, and they go through startExercise, so
+                    // the tutorial and calibration checks still apply.
+                    onStartWorkoutClick = { navigateToBottomNavRoute(RepMateDestinations.HOME) },
                 )
             }
             composable(RepMateDestinations.LEADERBOARD) {
@@ -419,6 +509,7 @@ fun RepMateNavGraph(
                         }
                     },
                     onRecalibrateClick = { showRecalibratePicker = true },
+                    onCreateAccountClick = { navController.navigate(RepMateDestinations.signupUpgrade()) },
                 )
 
                 if (showRecalibratePicker) {
@@ -448,12 +539,42 @@ fun RepMateNavGraph(
 
             composable(
                 route = RepMateDestinations.SESSION_DETAIL,
-                arguments = listOf(navArgument(RepMateDestinations.ARG_SESSION_ID) { type = NavType.StringType }),
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_SESSION_ID) { type = NavType.StringType },
+                        navArgument(RepMateDestinations.ARG_POST_WORKOUT) {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        },
+                    ),
             ) { backStackEntry ->
                 val sessionId = backStackEntry.arguments?.getString(RepMateDestinations.ARG_SESSION_ID).orEmpty()
+                val postWorkout = backStackEntry.arguments?.getBoolean(RepMateDestinations.ARG_POST_WORKOUT) ?: false
                 SessionDetailScreen(
                     sessionId = sessionId,
+                    postWorkout = postWorkout,
                     onBackClick = { navController.popBackStack() },
+                    // Pushed on top of the summary (not replacing it), so Motion Replay's back
+                    // returns here.
+                    onReviewRepsClick = { navController.navigate(RepMateDestinations.motionReplay(sessionId)) },
+                    // The finished workout was already popped when this summary was opened, so going
+                    // Home here (and on system back, see SessionDetailScreen) can't reach it again.
+                    onDoneClick = {
+                        // TEMPORARY: debug logging to inspect the navigation state on device (public
+                        // APIs only). Remove once the Done / system-back behaviour is confirmed.
+                        Log.d(
+                            "RepMateNav",
+                            "Done before: current=${navController.currentDestination?.route} " +
+                                "previous=${navController.previousBackStackEntry?.destination?.route}",
+                        )
+                        val poppedToHome = navigateHomeAfterWorkout()
+                        Log.d(
+                            "RepMateNav",
+                            "Done after: popBackStack(HOME)=$poppedToHome " +
+                                "current=${navController.currentDestination?.route} " +
+                                "previous=${navController.previousBackStackEntry?.destination?.route}",
+                        )
+                    },
                 )
             }
 
@@ -505,7 +626,7 @@ fun RepMateNavGraph(
                 LiveWorkoutScreen(
                     exerciseType = exerciseType,
                     onWorkoutFinished = { sessionId ->
-                        navController.navigate(RepMateDestinations.motionReplay(sessionId)) {
+                        navController.navigate(RepMateDestinations.sessionDetail(sessionId, postWorkout = true)) {
                             popUpTo(RepMateDestinations.liveWorkout(exerciseType)) { inclusive = true }
                         }
                     },
@@ -515,7 +636,7 @@ fun RepMateNavGraph(
             composable(RepMateDestinations.PUSHUP_WORKOUT) {
                 PushupWorkoutScreen(
                     onWorkoutFinished = { sessionId ->
-                        navController.navigate(RepMateDestinations.motionReplay(sessionId)) {
+                        navController.navigate(RepMateDestinations.sessionDetail(sessionId, postWorkout = true)) {
                             popUpTo(RepMateDestinations.PUSHUP_WORKOUT) { inclusive = true }
                         }
                     },
@@ -548,6 +669,6 @@ fun RepMateNavGraph(
 @Composable
 private fun RepMateNavGraphPreview() {
     RepMateTheme {
-        RepMateNavGraph()
+        RepMateNavGraph(startDestination = RepMateDestinations.WELCOME)
     }
 }

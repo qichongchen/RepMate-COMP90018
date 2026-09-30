@@ -86,9 +86,9 @@ android {
     }
     buildFeatures {
         compose = true
-        // Needed for BuildConfig.DEBUG, which gates the debug-only "open sensor probe" button on
-        // the home placeholder (see RepMateDestinations.HOME in NavGraph.kt). AGP 8+ makes
-        // BuildConfig generation opt-in, so this must be explicit.
+        // Needed for BuildConfig: the auth screens read GOOGLE_WEB_CLIENT_ID, the push-up workout
+        // code reads DEBUG, and the androidTest friend tests read the TEST_ACCOUNT_* fields. AGP 8+
+        // makes BuildConfig generation opt-in, so this must be explicit.
         buildConfig = true
     }
 
@@ -111,6 +111,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    // SplashScreen compat: holds the system splash until StartupViewModel has resolved the start
+    // destination, so a signed-in user never sees a Welcome flash.
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     // Coroutines + Flow: the engine consumes a Flow<MotionFrame> and DeviceSensorSource
     // builds one with callbackFlow. The -android artifact adds Dispatchers.Main on top of

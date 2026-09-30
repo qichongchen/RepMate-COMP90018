@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.repmate.data.repo.FriendRepository
 import com.repmate.data.repo.LeaderboardLoad
 import com.repmate.data.repo.LeaderboardRepository
 import com.repmate.data.repo.observeTop
@@ -15,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -55,6 +57,7 @@ constructor(
     private val firebaseAuth: FirebaseAuth,
     private val sessionRepository: SessionRepository,
     private val leaderboardRepository: LeaderboardRepository,
+    private val friendRepository: FriendRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(buildInitialUiState(firebaseAuth))
@@ -101,6 +104,23 @@ constructor(
                 }
             }
         }
+
+        viewModelScope.launch {
+            friendRepository.observeFriends()
+                // FirestoreFriendRepository's callbackFlow closes with an exception on a listener
+                // failure, which would otherwise crash this coroutine uncaught. The banner is a side
+                // panel, so log and fall back to "Challenge a friend" (empty list -> null name)
+                // rather than take Home down (Golden Rule 7).
+                .catch { error ->
+                    Log.w("RepMateHome", "friends unavailable on Home", error)
+                    emit(emptyList())
+                }
+                .collect { friends ->
+                    // NOTE: firstOrNull() matches Ghost Duel's preselected opponent, so the banner
+                    // name and the friend the duel opens with agree.
+                    _uiState.update { it.copy(ghostDuelOpponentName = friends.firstOrNull()?.displayName) }
+                }
+        }
     }
 }
 
@@ -110,7 +130,7 @@ private fun buildInitialUiState(firebaseAuth: FirebaseAuth): HomeUiState =
         avatarInitial = accountDisplayFor(firebaseAuth).avatarInitial,
         lastSession = null,
         leaderboardTop3 = emptyList(),
-        ghostDuelOpponentName = "Priya",
+        ghostDuelOpponentName = null,
     )
 
 private fun WorkoutSession.toLastSessionUi(): LastSessionUi =

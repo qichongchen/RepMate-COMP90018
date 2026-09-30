@@ -33,3 +33,13 @@ fun ExerciseType.icon(): ImageVector =
         ExerciseType.PUSHUP -> ImageVector.vectorResource(id = R.drawable.ic_push_up)
         ExerciseType.JUMPING_JACK -> ImageVector.vectorResource(id = R.drawable.ic_jumping_jack)
     }
+
+/**
+ * Whether reps of this exercise are actually graded by the form scorer. False for
+ * [ExerciseType.PUSHUP] only: push-ups are counted from the camera and have no calibration
+ * profile to score against, so every push-up rep is saved with a placeholder score of 10 (see
+ * `PushupWorkoutViewModel`). Anything that displays or averages a rep score should check this
+ * rather than present that placeholder as a real result.
+ */
+val ExerciseType.hasFormScoring: Boolean
+    get() = this != ExerciseType.PUSHUP

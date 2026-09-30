@@ -2,4 +2,16 @@
 <resources>
 
     <style name="Theme.RepMate" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+      MainActivity's launch theme (see AndroidManifest.xml). MainActivity calls installSplashScreen(),
+      which swaps this for postSplashScreenTheme (the real app theme) once the splash is dismissed.
+      The icon is the launcher foreground, which is authored to sit inside the splash icon's safe
+      circle.
+    -->
+    <style name="Theme.RepMate.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.RepMate</item>
+    </style>
 </resources>

@@ -118,7 +118,7 @@ private fun WelcomeContent(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Your pocket form coach. Count reps, score form, replay every rep.",
+                    text = "Your pocket form coach. Count reps, score your form, review every session.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

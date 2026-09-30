@@ -47,6 +47,6 @@ fun accountDisplayFor(firebaseAuth: FirebaseAuth): AccountDisplay {
     return AccountDisplay(
         name = "Guest",
         avatarInitial = null,
-        caption = "Guest session",
+        caption = "Guest session · create an account to keep your progress",
     )
 }

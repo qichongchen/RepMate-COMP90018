@@ -27,22 +27,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.Intent
-import com.example.repmate.BuildConfig
-import com.example.repmate.SensorProbeActivity
 import com.repmate.engine.ExerciseType
 import com.repmate.ui.components.ExerciseChip
 import com.repmate.ui.components.displayLabel
 import com.repmate.ui.components.icon
-import com.repmate.ui.components.RepMateButton
-import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
@@ -135,30 +129,8 @@ private fun HomeContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 LeaderboardCard(entries = uiState.leaderboardTop3, unavailable = uiState.leaderboardUnavailable)
             }
-
-            if (BuildConfig.DEBUG) {
-                DebugSensorProbeButton()
-            }
         }
     }
-}
-
-/**
- * Debug-only bridge to the engine team's sensor bring-up harness, carried over from the old
- * HomePlaceholder now that this is the real Home screen. SensorProbeActivity is a separate
- * Activity that predates this nav graph, not a NavHost destination, so it's reached with a plain
- * Intent rather than navigation. Gated on BuildConfig.DEBUG so it never ships in a release build;
- * delete this the same day SensorProbeActivity itself gets deleted.
- */
-@Composable
-private fun DebugSensorProbeButton(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    RepMateButton(
-        text = "Open sensor probe (debug)",
-        onClick = { context.startActivity(Intent(context, SensorProbeActivity::class.java)) },
-        variant = RepMateButtonVariant.Ghost,
-        modifier = modifier,
-    )
 }
 
 @Composable

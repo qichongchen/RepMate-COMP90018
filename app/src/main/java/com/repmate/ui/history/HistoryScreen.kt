@@ -3,7 +3,6 @@ package com.repmate.ui.history
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,11 +22,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.repmate.ui.components.EmptyState
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
@@ -43,10 +42,13 @@ import java.util.Locale
  *
  * @param onSessionClick invoked with the tapped session's id; the caller (`NavGraph.kt`) decides
  *   where that routes (Session Detail).
+ * @param onStartWorkoutClick invoked by the empty state's "Start a workout" button; the caller
+ *   decides where that goes (Home, where the exercise chips live). Only the empty state uses it.
  */
 @Composable
 fun HistoryScreen(
     onSessionClick: (String) -> Unit,
+    onStartWorkoutClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HistoryViewModel = hiltViewModel(),
 ) {
@@ -55,6 +57,7 @@ fun HistoryScreen(
     HistoryContent(
         uiState = uiState,
         onSessionClick = onSessionClick,
+        onStartWorkoutClick = onStartWorkoutClick,
         modifier = modifier,
     )
 }
@@ -63,6 +66,7 @@ fun HistoryScreen(
 private fun HistoryContent(
     uiState: HistoryUiState,
     onSessionClick: (String) -> Unit,
+    onStartWorkoutClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -83,8 +87,9 @@ private fun HistoryContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         if (uiState.sections.isEmpty()) {
+            // Nothing while loading, so the empty state never flashes before the data arrives.
             if (!uiState.isLoading) {
-                EmptyHistoryBody(modifier = Modifier.weight(1f))
+                EmptyHistoryBody(onStartWorkoutClick = onStartWorkoutClick, modifier = Modifier.weight(1f))
             }
         } else {
             LazyColumn(
@@ -110,16 +115,22 @@ private fun HistoryContent(
     }
 }
 
+/**
+ * Shown when there are no sessions and loading has finished. The look lives in the shared
+ * [EmptyState]; this only supplies History's wording and the action.
+ */
 @Composable
-private fun EmptyHistoryBody(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Text(
-            text = "No sessions yet. Finish a workout to see it here.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
+private fun EmptyHistoryBody(
+    onStartWorkoutClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    EmptyState(
+        title = "No workouts yet",
+        message = "Finish a workout and it will show up here.",
+        actionLabel = "Start a workout",
+        onAction = onStartWorkoutClick,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -193,7 +204,7 @@ private val PREVIEW_STATE =
 @Composable
 private fun HistoryScreenLightPreview() {
     RepMateTheme(darkTheme = false) {
-        HistoryContent(uiState = PREVIEW_STATE, onSessionClick = {})
+        HistoryContent(uiState = PREVIEW_STATE, onSessionClick = {}, onStartWorkoutClick = {})
     }
 }
 
@@ -201,14 +212,22 @@ private fun HistoryScreenLightPreview() {
 @Composable
 private fun HistoryScreenDarkPreview() {
     RepMateTheme(darkTheme = true) {
-        HistoryContent(uiState = PREVIEW_STATE, onSessionClick = {})
+        HistoryContent(uiState = PREVIEW_STATE, onSessionClick = {}, onStartWorkoutClick = {})
     }
 }
 
-@Preview(name = "History - Empty", showBackground = true, backgroundColor = 0xFFFAFAFA, widthDp = 360, heightDp = 780)
+@Preview(name = "History - Empty - Light", showBackground = true, backgroundColor = 0xFFFAFAFA, widthDp = 360, heightDp = 780)
 @Composable
-private fun HistoryScreenEmptyPreview() {
+private fun HistoryScreenEmptyLightPreview() {
     RepMateTheme(darkTheme = false) {
-        HistoryContent(uiState = HistoryUiState(isLoading = false), onSessionClick = {})
+        HistoryContent(uiState = HistoryUiState(isLoading = false), onSessionClick = {}, onStartWorkoutClick = {})
+    }
+}
+
+@Preview(name = "History - Empty - Dark", showBackground = true, backgroundColor = 0xFF121212, widthDp = 360, heightDp = 780)
+@Composable
+private fun HistoryScreenEmptyDarkPreview() {
+    RepMateTheme(darkTheme = true) {
+        HistoryContent(uiState = HistoryUiState(isLoading = false), onSessionClick = {}, onStartWorkoutClick = {})
     }
 }

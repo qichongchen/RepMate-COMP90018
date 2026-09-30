@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
@@ -70,6 +71,10 @@ data class PushupWorkoutUiState(
     val cameraFacing: CameraFacing = CameraFacing.REAR,
     /** Only filled in debug builds. */
     val motion: MotionReadout? = null,
+    /** Mirrors [WorkoutPreferences.isHapticFeedbackEnabled] -- the same global setting as Profile's toggle. */
+    val hapticFeedbackEnabled: Boolean = true,
+    /** Mirrors [WorkoutPreferences.isSpokenRepCountEnabled] -- the same global setting as Profile's toggle. */
+    val spokenRepCountEnabled: Boolean = false,
 )
 
 /**
@@ -134,8 +139,21 @@ class PushupWorkoutViewModel
         private val frameProcessor = PushupFrameProcessor()
         private val stabilityGate = PhoneStabilityGate()
 
+        // Everything the workout itself changes. The two feedback settings are folded in below
+        // from the flows above -- see LiveWorkoutViewModel for why they are not written here.
         private val _uiState = MutableStateFlow(PushupWorkoutUiState())
-        val uiState: StateFlow<PushupWorkoutUiState> = _uiState.asStateFlow()
+
+        val uiState: StateFlow<PushupWorkoutUiState> =
+            combine(_uiState, hapticFeedbackEnabled, spokenRepCountEnabled) { state, haptic, spoken ->
+                state.copy(hapticFeedbackEnabled = haptic, spokenRepCountEnabled = spoken)
+            }.stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                _uiState.value.copy(
+                    hapticFeedbackEnabled = hapticFeedbackEnabled.value,
+                    spokenRepCountEnabled = spokenRepCountEnabled.value,
+                ),
+            )
 
         private val _workoutFinished = Channel<String>(Channel.BUFFERED)
         val workoutFinished = _workoutFinished.receiveAsFlow()
@@ -264,6 +282,16 @@ class PushupWorkoutViewModel
             repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
         }
 
+        /** Persists the buzz-on-rep setting -- the same one Profile's toggle writes, not a per-session override. */
+        fun onHapticFeedbackToggled(enabled: Boolean) {
+            viewModelScope.launch { workoutPreferences.setHapticFeedbackEnabled(enabled) }
+        }
+
+        /** Persists the spoken-rep-count setting -- the same one Profile's toggle writes, not a per-session override. */
+        fun onSpokenRepCountToggled(enabled: Boolean) {
+            viewModelScope.launch { workoutPreferences.setSpokenRepCountEnabled(enabled) }
+        }
+
         /**
          * Switches between the rear and front camera. Keeps the reps already counted, but forgets
          * the arm lock and any half-finished rep: the geometry the lock was chosen on no longer holds.
@@ -314,6 +342,7 @@ class PushupWorkoutViewModel
                     id = sessionId,
                     exercise = ExerciseType.PUSHUP,
                     startedAt = startedAtWallClockMs,
+                    endedAt = System.currentTimeMillis(),
                     reps = scoredReps.toList(),
                     // No MotionFrame data exists for a camera workout -- see WorkoutSession's own
                     // KDoc on why this field is nullable. MotionReplay already handles a session

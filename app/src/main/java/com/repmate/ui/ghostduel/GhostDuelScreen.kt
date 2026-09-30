@@ -36,15 +36,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.data.repo.Friend
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.components.EmptyState
 import com.repmate.ui.components.RepMateButton
-import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.components.displayLabel
 import com.repmate.ui.components.icon
@@ -193,27 +192,24 @@ private fun GhostDuelTopBar(
     }
 }
 
+/**
+ * No friends yet. Uses the shared [EmptyState]; the action is labelled "Go to Profile" because that
+ * is where it goes (see `onAddFriendClick` in `NavGraph.kt`), and Profile is where Friends lives.
+ * The horizontal padding is applied here because this screen, unlike History, does not pad its
+ * whole body.
+ */
 @Composable
 private fun EmptyFriendsBody(
     onAddFriendClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "No friends yet. Add one now",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            RepMateButton(
-                text = "Go to Profile",
-                onClick = onAddFriendClick,
-                variant = RepMateButtonVariant.Ghost,
-            )
-        }
-    }
+    EmptyState(
+        title = "No friends yet",
+        message = "Add a friend to start a Ghost Duel.",
+        actionLabel = "Go to Profile",
+        onAction = onAddFriendClick,
+        modifier = modifier.padding(horizontal = 24.dp),
+    )
 }
 
 /**

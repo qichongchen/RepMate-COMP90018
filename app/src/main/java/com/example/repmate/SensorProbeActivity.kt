@@ -69,7 +69,9 @@ import kotlin.math.sqrt
  * ### Launching it
  * This is no longer the app's launcher — `.MainActivity` is, and it opens the real nav graph
  * starting at `welcome`. This activity has no intent-filter, so it won't show up as a home
- * screen icon; launch it explicitly instead when you need it:
+ * screen icon, and Home no longer has a button for it -- it is adb-only now (and debug builds
+ * only, since the `<activity>` entry lives in `app/src/debug/AndroidManifest.xml`). Launch it
+ * explicitly when you need it:
  * ```
  * adb shell am start -n com.example.repmate/.SensorProbeActivity
  * ```
@@ -77,7 +79,7 @@ import kotlin.math.sqrt
  *
  * ### To remove it for good (once the engine team no longer needs it)
  * 1. Delete this file.
- * 2. In `AndroidManifest.xml`, delete the `.SensorProbeActivity` `<activity>` entry.
+ * 2. In `app/src/debug/AndroidManifest.xml`, delete the `.SensorProbeActivity` `<activity>` entry.
  *
  * ### To read its output
  * Logcat tag `RepMateProbe`: one line per 25 frames, plus one `REP #n` line per counted rep.
