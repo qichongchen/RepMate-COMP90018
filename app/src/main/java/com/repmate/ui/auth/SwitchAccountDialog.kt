@@ -11,6 +11,9 @@ import androidx.compose.runtime.Composable
  * account" button and [SignUpScreen]'s "Log in instead" error action) so the wording and the
  * consequence they agree to are identical wherever they start.
  *
+ * Logging in merges the guest's recorded workouts into that account (see
+ * `com.repmate.data.sync.GuestHistoryMigrator`), which is what the copy promises.
+ *
  * Opening or confirming this dialog does not sign anyone out: the caller only navigates to Log in
  * (on top of Welcome), and the guest stays the current Firebase user until a log-in actually
  * succeeds. Cancel, back, or abandoning Log in / Welcome therefore leaves them as the same guest
@@ -30,7 +33,7 @@ fun SwitchAccountDialog(
         title = { Text("Log in to another account?") },
         text = {
             Text(
-                "Workouts you've recorded as a guest on this phone won't carry over to that account. " +
+                "Workouts you've recorded as a guest on this phone will be added to that account. " +
                     "Cancel to keep your guest session.",
             )
         },

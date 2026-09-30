@@ -83,7 +83,7 @@ import java.util.Locale
  * it, so a guest is offered an upgrade instead, which keeps the same account (see
  * `AuthViewModel.onCreateAccountClicked`). Under it, "I already have an account" lets a returning
  * user reach their real account: it asks for confirmation via [SwitchAccountDialog] (their guest
- * workouts won't follow them) and only then opens Log in (on top of Welcome), without signing the guest out. The header is refreshed each time this screen enters
+ * workouts will be added to that account) and only then opens Log in (on top of Welcome), without signing the guest out. The header is refreshed each time this screen enters
  * composition so it reflects an upgrade made on the Sign up screen.
  *
  * ## Safety check-in

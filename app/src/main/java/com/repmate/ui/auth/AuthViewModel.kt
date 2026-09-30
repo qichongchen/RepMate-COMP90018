@@ -13,6 +13,7 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.repmate.data.cloud.FirestoreUserProfileDataSource
+import com.repmate.data.sync.GuestMigrationLauncher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +72,7 @@ class AuthViewModel
     constructor(
         private val firebaseAuth: FirebaseAuth,
         private val userProfileDataSource: FirestoreUserProfileDataSource,
+        private val guestMigration: GuestMigrationLauncher,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AuthFormUiState())
         val uiState: StateFlow<AuthFormUiState> = _uiState.asStateFlow()
@@ -171,20 +173,29 @@ class AuthViewModel
 
             _uiState.update { it.copy(isEmailLoading = true, generalError = null, generalErrorOffersLogIn = false) }
             viewModelScope.launch {
+                // A guest logging in is *replaced* by that account (no link), so their UID has to be
+                // captured before the call -- afterwards it is gone. See GuestHistoryMigrator.
+                val guestUid = currentGuest()?.uid
                 try {
+                    if (guestUid != null) guestMigration.markGuestPending(guestUid)
                     firebaseAuth.signInWithEmailAndPassword(state.email, state.password).await()
+                    if (guestUid != null) guestMigration.onSignedIn()
                     ensureUserProfile()
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthInvalidUserException) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     // Deliberately the same message as a wrong password: don't reveal whether an
                     // email is registered at all.
                     failEmail("Incorrect email or password.")
                 } catch (e: FirebaseAuthInvalidCredentialsException) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     failEmail("Incorrect email or password.")
                 } catch (e: FirebaseNetworkException) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     failEmail("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     failEmail("Something went wrong signing in. Please try again.")
                 }
             }
@@ -212,24 +223,33 @@ class AuthViewModel
         ) {
             viewModelScope.launch {
                 val guest = if (linkToGuest) currentGuest() else null
+                // A guest signing in without linking (Log in, or Sign up outside upgrade mode) is
+                // replaced, possibly by a different UID, so capture it first. Linking keeps the UID
+                // and needs no merge. See GuestHistoryMigrator.
+                val guestUidToMerge = if (guest == null) currentGuest()?.uid else null
                 try {
                     val credential = GoogleAuthProvider.getCredential(idToken, null)
                     if (guest != null) {
                         guest.linkWithCredential(credential).await()
                     } else {
+                        if (guestUidToMerge != null) guestMigration.markGuestPending(guestUidToMerge)
                         firebaseAuth.signInWithCredential(credential).await()
+                        if (guestUidToMerge != null) guestMigration.onSignedIn()
                     }
                     ensureUserProfile()
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
                     failGoogle(
                         "That Google account is already registered. Use a different account to keep your guest progress.",
                         offersLogIn = guest != null,
                     )
                 } catch (e: FirebaseNetworkException) {
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
                     failGoogle("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
                     failGoogle("Google sign-in failed. Please try again.")
                 }
             }

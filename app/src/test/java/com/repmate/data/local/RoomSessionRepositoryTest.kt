@@ -379,6 +379,31 @@ private class FakeSessionDao : SessionDao {
 
 
 
+    override suspend fun getSessionsByOwner(
+        ownerId: String
+    ): List<WorkoutSessionEntity> {
+        return sessions.value
+            .filter { it.ownerId == ownerId }
+            .sortedBy { it.startedAt }
+    }
+
+    override suspend fun reassignOwner(
+        ids: List<String>,
+        oldOwnerId: String,
+        newOwnerId: String
+    ): Int {
+        var moved = 0
+        sessions.value = sessions.value.map { session ->
+            if (session.id in ids && session.ownerId == oldOwnerId) {
+                moved++
+                session.copy(ownerId = newOwnerId)
+            } else {
+                session
+            }
+        }
+        return moved
+    }
+
     override suspend fun getRepScores(
         sessionId: String
     ): List<RepScoreEntity> {
