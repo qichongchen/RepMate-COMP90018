@@ -42,6 +42,12 @@ data class AuthFormUiState(
     val isEmailLoading: Boolean = false,
     val isGoogleLoading: Boolean = false,
     val generalError: String? = null,
+    /**
+     * True when [generalError] is a guest-upgrade collision (the email or Google account already
+     * belongs to someone else). The upgrade-mode sign-up screen uses it to offer "Log in instead";
+     * always false when [generalError] is null.
+     */
+    val generalErrorOffersLogIn: Boolean = false,
 ) {
     /** True while either auth path is in flight -- both buttons disable together so a user can't fire both at once. */
     val isBusy: Boolean get() = isEmailLoading || isGoogleLoading
@@ -82,11 +88,11 @@ class AuthViewModel
         val authSucceeded = _authSucceeded.receiveAsFlow()
 
         fun onEmailChanged(value: String) {
-            _uiState.update { it.copy(email = value, emailError = null, generalError = null) }
+            _uiState.update { it.copy(email = value, emailError = null, generalError = null, generalErrorOffersLogIn = false) }
         }
 
         fun onPasswordChanged(value: String) {
-            _uiState.update { it.copy(password = value, passwordError = null, generalError = null) }
+            _uiState.update { it.copy(password = value, passwordError = null, generalError = null, generalErrorOffersLogIn = false) }
         }
 
         /**
@@ -116,7 +122,7 @@ class AuthViewModel
                 return
             }
 
-            _uiState.update { it.copy(isEmailLoading = true, generalError = null) }
+            _uiState.update { it.copy(isEmailLoading = true, generalError = null, generalErrorOffersLogIn = false) }
             viewModelScope.launch {
                 val guest = currentGuest()
                 try {
@@ -135,6 +141,7 @@ class AuthViewModel
                         } else {
                             "An account with this email already exists."
                         },
+                        offersLogIn = guest != null,
                     )
                 } catch (e: FirebaseAuthWeakPasswordException) {
                     failEmail(e.reason ?: "That password is too weak.")
@@ -162,7 +169,7 @@ class AuthViewModel
                 return
             }
 
-            _uiState.update { it.copy(isEmailLoading = true, generalError = null) }
+            _uiState.update { it.copy(isEmailLoading = true, generalError = null, generalErrorOffersLogIn = false) }
             viewModelScope.launch {
                 try {
                     firebaseAuth.signInWithEmailAndPassword(state.email, state.password).await()
@@ -216,7 +223,10 @@ class AuthViewModel
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {
-                    failGoogle("That Google account is already registered. Use a different account to keep your guest progress.")
+                    failGoogle(
+                        "That Google account is already registered. Use a different account to keep your guest progress.",
+                        offersLogIn = guest != null,
+                    )
                 } catch (e: FirebaseNetworkException) {
                     failGoogle("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
@@ -227,7 +237,7 @@ class AuthViewModel
 
         /** Credential Manager's picker is about to show; reflected as loading immediately, before any token comes back. */
         fun onGoogleSignInStarted() {
-            _uiState.update { it.copy(isGoogleLoading = true, generalError = null) }
+            _uiState.update { it.copy(isGoogleLoading = true, generalError = null, generalErrorOffersLogIn = false) }
         }
 
         /** Called when Credential Manager itself fails (not a user cancel -- that's [onGoogleSignInCancelled]). */
@@ -241,15 +251,23 @@ class AuthViewModel
         }
 
         fun dismissError() {
-            _uiState.update { it.copy(generalError = null) }
+            _uiState.update { it.copy(generalError = null, generalErrorOffersLogIn = false) }
         }
 
-        private fun failEmail(message: String) {
-            _uiState.update { it.copy(isEmailLoading = false, generalError = message) }
+        // NOTE: offersLogIn is only ever true for a guest-upgrade collision, the one failure where
+        // "log in to that account instead" is a real way forward (see AuthFormUiState).
+        private fun failEmail(
+            message: String,
+            offersLogIn: Boolean = false,
+        ) {
+            _uiState.update { it.copy(isEmailLoading = false, generalError = message, generalErrorOffersLogIn = offersLogIn) }
         }
 
-        private fun failGoogle(message: String) {
-            _uiState.update { it.copy(isGoogleLoading = false, generalError = message) }
+        private fun failGoogle(
+            message: String,
+            offersLogIn: Boolean = false,
+        ) {
+            _uiState.update { it.copy(isGoogleLoading = false, generalError = message, generalErrorOffersLogIn = offersLogIn) }
         }
 
         private fun validateNewPassword(password: String): String? =

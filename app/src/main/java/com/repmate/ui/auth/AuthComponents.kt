@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -161,11 +162,16 @@ internal fun AuthLabeledField(
  * A quiet inline notice for form-level errors -- outlined, not filled, so it reads as "heads up"
  * rather than a dominant alert block. `color = Transparent` (not [MaterialTheme.colorScheme.errorContainer])
  * is deliberate: a full errorContainer fill was the heavier look this replaced.
+ *
+ * @param actionLabel optional text button under the message for errors that have a way forward
+ *   (e.g. "Log in instead" on a guest-upgrade collision). Shown only when both this and [onActionClick] are set.
  */
 @Composable
 internal fun AuthErrorBanner(
     message: String,
     modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onActionClick: (() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -174,13 +180,17 @@ internal fun AuthErrorBanner(
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.WarningAmber, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = message, style = MaterialTheme.typography.bodyMedium)
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.WarningAmber, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = message, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (actionLabel != null && onActionClick != null) {
+                TextButton(onClick = onActionClick) {
+                    Text(text = actionLabel, color = MaterialTheme.colorScheme.error, textDecoration = TextDecoration.Underline)
+                }
+            }
         }
     }
 }

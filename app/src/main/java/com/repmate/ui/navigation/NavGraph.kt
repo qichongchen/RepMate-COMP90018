@@ -271,6 +271,34 @@ fun RepMateNavGraph(
         }
     }
 
+    // Makes Welcome the only entry on the back stack. Used by sign-out, and as the first step of
+    // switchToExistingAccount below; it signs nobody out itself (sign-out does that before calling it).
+    // Numeric popUpTo(0), not popUpTo(RepMateDestinations.WELCOME): by the time a user reaches
+    // Profile, Welcome has typically already been popped off the back stack by
+    // navigateAfterAuthSuccess below (or was never on it, for a user launched straight into Home),
+    // so a route-based popUpTo targeting it would find nothing to pop. popUpTo(0) clears the entire
+    // back stack regardless of what's on it, so nobody can navigate back into an authenticated
+    // screen, and it leaves Welcome as the root that navigateAfterAuthSuccess's own
+    // popUpTo(WELCOME) { inclusive } relies on.
+    val resetToWelcome: () -> Unit = {
+        navController.navigate(RepMateDestinations.WELCOME) {
+            popUpTo(0) { inclusive = true }
+        }
+    }
+
+    // Shared by both ways a guest can choose to log in to an existing account ("I already have an
+    // account" on Profile, "Log in instead" on the upgrade Sign up screen), after they confirm
+    // SwitchAccountDialog. Resets to Welcome first and then puts Log in on top of it, so:
+    //  - back from Log in lands on Welcome, and back from Welcome exits the app (it is the root);
+    //  - navigateAfterAuthSuccess's popUpTo(WELCOME) { inclusive } clears Welcome *and* Log in.
+    // NOTE: not a bare navigate(LOGIN): a guest who launched into Home has no Welcome on the stack,
+    // so there would be nothing for that pop to find. The guest is deliberately not signed out here;
+    // they stay the current user until a log-in actually succeeds.
+    val switchToExistingAccount: () -> Unit = {
+        resetToWelcome()
+        navController.navigate(RepMateDestinations.LOGIN)
+    }
+
     // The one place that decides "onboarding or home" after sign-up, log-in, or guest sign-in
     // all succeed -- so none of the three hardcodes a destination the way LogIn used to
     // (unconditionally HOME, which was wrong for a first-time log-in on a new device) or SignUp
@@ -394,6 +422,7 @@ fun RepMateNavGraph(
                         if (upgrade) navController.popBackStack() else navigateAfterAuthSuccess()
                     },
                     upgrade = upgrade,
+                    onSwitchToLogIn = switchToExistingAccount,
                     onLogInClick = {
                         // Replaces this screen on the back stack rather than stacking on top of
                         // it, so back from Log in returns to Welcome, not bounces through Signup.
@@ -497,19 +526,10 @@ fun RepMateNavGraph(
                 var showRecalibratePicker by remember { mutableStateOf(false) }
 
                 ProfileScreen(
-                    onSignedOut = {
-                        // Numeric popUpTo(0), not popUpTo(RepMateDestinations.WELCOME): by the time a
-                        // user reaches Profile, Welcome has typically already been popped off the back
-                        // stack by navigateAfterAuthSuccess above, so a route-based popUpTo targeting it
-                        // would find nothing to pop. popUpTo(0) clears the entire back stack regardless
-                        // of what's on it, so a signed-out user can never navigate back into an
-                        // authenticated screen.
-                        navController.navigate(RepMateDestinations.WELCOME) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
+                    onSignedOut = resetToWelcome,
                     onRecalibrateClick = { showRecalibratePicker = true },
                     onCreateAccountClick = { navController.navigate(RepMateDestinations.signupUpgrade()) },
+                    onSwitchToExistingAccount = switchToExistingAccount,
                 )
 
                 if (showRecalibratePicker) {
