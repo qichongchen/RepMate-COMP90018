@@ -335,26 +335,32 @@ fun RepMateNavGraph(
         }
     }
 
-    // Shared by the bottom bar and any in-screen shortcut to a tab (e.g. History's empty state
-    // sending the user to Home, or the post-workout summary's "Done"), so all switch tabs
-    // identically: the tab highlights correctly and the back stack doesn't grow.
+    // Shared by the bottom bar and every in-screen shortcut to a tab (Home's avatar, Ghost Duel's
+    // "add friend", History's empty state), so all switch tabs identically: the tab highlights
+    // correctly and the back stack stays at most [Home, <tab>], so back from any tab reaches Home
+    // and back from Home exits the app.
+    // NOTE: pops to HOME, not findStartDestination(). The graph's start destination is fixed at
+    // launch, so for a user who signed in this session it is Welcome, which is no longer on the back
+    // stack -- the pop would then silently do nothing. HOME is always the root of the signed-in back
+    // stack (see navigateAfterAuthSuccess and Onboarding).
+    // NOTE: no saveState / restoreState. Restoring a saved tab stack brought back the stack that had
+    // just been popped (e.g. tapping Home from Profile re-opened Profile); tabs simply start fresh.
     val navigateToBottomNavRoute: (String) -> Unit = { route ->
-        navController.navigate(route) {
-            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
-            // is already on, and restore each tab's state when they switch back to it.
-            // NOTE: pops to HOME, not findStartDestination(). The graph's start destination is
-            // fixed at launch, so for a user who signed in this session it is Welcome, which is no
-            // longer on the back stack -- the pop would then silently do nothing and a second Home
-            // would stack on top of whatever screen "Done" was pressed from. HOME is always the
-            // root of the signed-in back stack (see navigateAfterAuthSuccess and Onboarding).
-            popUpTo(RepMateDestinations.HOME) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+        // Home is already on the stack, so for the Home tab a plain pop is the most reliable way back
+        // to it: it drops everything above Home without recreating it. If the pop does nothing (already
+        // on Home, or Home isn't on the stack) fall through to the navigate below, which is a no-op
+        // on Home thanks to launchSingleTop.
+        val poppedToHome = route == RepMateDestinations.HOME && navController.popBackStack(RepMateDestinations.HOME, inclusive = false)
+        if (!poppedToHome) {
+            navController.navigate(route) {
+                popUpTo(RepMateDestinations.HOME)
+                launchSingleTop = true
+            }
         }
     }
 
     // Leaves the post-workout summary for Home. Deliberately not navigateToBottomNavRoute: that helper
-    // is for tab switching, and its navigate(HOME) { popUpTo(HOME) ...; launchSingleTop; restoreState }
+    // is for tab switching, and its navigate(HOME) { popUpTo(HOME) ...; launchSingleTop }
     // combination is unreliable when the top entry is the summary (it can leave the summary on the stack).
     // NOTE: try the plain pop first -- it removes the summary and anything above the existing Home entry
     // without recreating Home. Only if Home isn't on the stack do we reset to a single fresh Home.
@@ -489,7 +495,7 @@ fun RepMateNavGraph(
             composable(RepMateDestinations.HOME) {
                 HomeScreen(
                     onExerciseSelected = startExercise,
-                    onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                    onProfileClick = { navigateToBottomNavRoute(RepMateDestinations.PROFILE) },
                     onGhostDuelClick = { navController.navigate(RepMateDestinations.GHOST_DUEL) },
                 )
             }
@@ -499,7 +505,7 @@ fun RepMateNavGraph(
                     onStartWorkoutClick = startExercise,
                     // TODO: once a real friends-management screen exists (Jasper's work), point this at
                     // that screen instead of Profile, and wire Profile's own "Friends" row the same way.
-                    onAddFriendClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                    onAddFriendClick = { navigateToBottomNavRoute(RepMateDestinations.PROFILE) },
                 )
             }
             composable(RepMateDestinations.HISTORY) {
