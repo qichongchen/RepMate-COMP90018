@@ -4,11 +4,13 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,9 +25,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -42,12 +46,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.engine.ExerciseType
+import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
 import com.repmate.ui.tutorial.ExerciseTutorialDialog
@@ -60,11 +66,18 @@ import java.util.Locale
  * Split into this stateful wrapper and the stateless [ProfileContent] below, same reasoning as
  * every other screen in this app: previews render from a plain [ProfileUiState], no Hilt required.
  *
- * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Haptic
- * feedback"/"Spoken rep count"/"Dark theme" toggles, "Recalibrate", "How exercises work", and the
- * safety check-in section (toggle + emergency contact) are real, as are the three stats in the
- * stats card (sessions, total reps, average score) -- the "Friends" row is the only static
- * placeholder.
+ * Sections, top to bottom: stats, preferences (the three toggles), exercises ("How exercises
+ * work", "Recalibrate"), safety ("Check-in alerts" toggle + emergency contact), account
+ * ("Friends"), then a standalone bottom button. For this first pass everything is real except the
+ * "Friends" row, the only static placeholder.
+ *
+ * ## Sign out, and guests
+ * For a signed-in user the bottom button is "Sign out", drawn in the error colour and gated behind
+ * a confirmation dialog. For a guest (anonymous account, [ProfileUiState.isGuest]) it is replaced
+ * by "Create account": signing out of an anonymous account discards it and everything saved to
+ * it, so a guest is offered an upgrade instead, which keeps the same account (see
+ * `AuthViewModel.onCreateAccountClicked`). The header is refreshed each time this screen enters
+ * composition so it reflects an upgrade made on the Sign up screen.
  *
  * ## Safety check-in
  * Turning the toggle on doesn't call [ProfileViewModel.onSafetyCheckInToggled] directly -- it
@@ -82,6 +95,8 @@ import java.util.Locale
  *
  * @param onSignedOut invoked once sign-out completes, so the caller (`NavGraph.kt`) can navigate
  *   back to Welcome with a cleared back stack -- this screen doesn't know about routes at all.
+ * @param onCreateAccountClick invoked when a guest taps "Create account"; the caller navigates to
+ *   Sign up in upgrade mode.
  * @param onRecalibrateClick invoked when the "Recalibrate" row is tapped. Takes no exercise type:
  *   this screen has no notion of "the current exercise" the way Home's chips do, so the caller
  *   (`NavGraph.kt`) is the one that shows an exercise picker and decides where to navigate once
@@ -91,6 +106,7 @@ import java.util.Locale
 fun ProfileScreen(
     onSignedOut: () -> Unit,
     onRecalibrateClick: () -> Unit,
+    onCreateAccountClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -101,6 +117,7 @@ fun ProfileScreen(
     var showEmergencyContactDialog by remember { mutableStateOf(false) }
     var showTutorialPicker by remember { mutableStateOf(false) }
     var tutorialExercise by remember { mutableStateOf<ExerciseType?>(null) }
+    var showSignOutConfirmation by remember { mutableStateOf(false) }
 
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -116,9 +133,13 @@ fun ProfileScreen(
         viewModel.signedOut.collect { onSignedOut() }
     }
 
+    // Runs again on every return to this screen (e.g. back from Sign up after upgrading a guest).
+    LaunchedEffect(viewModel) { viewModel.refreshAccount() }
+
     ProfileContent(
         uiState = uiState,
-        onSignOutClicked = viewModel::onSignOutClicked,
+        onSignOutClicked = { showSignOutConfirmation = true },
+        onCreateAccountClicked = onCreateAccountClick,
         onHapticFeedbackToggled = viewModel::onHapticFeedbackToggled,
         onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
@@ -134,6 +155,16 @@ fun ProfileScreen(
         onHowExercisesWorkClick = { showTutorialPicker = true },
         modifier = modifier,
     )
+
+    if (showSignOutConfirmation) {
+        SignOutConfirmationDialog(
+            onConfirm = {
+                showSignOutConfirmation = false
+                viewModel.onSignOutClicked()
+            },
+            onDismiss = { showSignOutConfirmation = false },
+        )
+    }
 
     if (showDisclaimer) {
         SafetyCheckInDisclaimerDialog(
@@ -209,6 +240,7 @@ fun ProfileScreen(
 private fun ProfileContent(
     uiState: ProfileUiState,
     onSignOutClicked: () -> Unit,
+    onCreateAccountClicked: () -> Unit,
     onHapticFeedbackToggled: (Boolean) -> Unit,
     onSpokenRepCountToggled: (Boolean) -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
@@ -239,16 +271,6 @@ private fun ProfileContent(
             averageScore = uiState.averageScore,
         )
 
-        SettingsSection(label = "safety check-in") {
-            SettingsToggleRow(
-                label = "Safety check-in",
-                checked = uiState.safetyCheckInEnabled,
-                onCheckedChange = onSafetyCheckInToggled,
-            )
-            SettingsDivider()
-            SettingsNavigationRow(label = "Emergency contact", onClick = onEmergencyContactClick)
-        }
-
         SettingsSection(label = "preferences") {
             SettingsToggleRow(
                 label = "Haptic feedback",
@@ -267,25 +289,74 @@ private fun ProfileContent(
                 checked = uiState.darkThemeEnabled,
                 onCheckedChange = onDarkThemeToggled,
             )
+        }
+
+        SettingsSection(label = "exercises") {
+            SettingsNavigationRow(label = "How exercises work", onClick = onHowExercisesWorkClick)
             SettingsDivider()
             SettingsNavigationRow(label = "Recalibrate", onClick = onRecalibrateClick)
         }
 
-        SettingsSection(label = "help") {
-            SettingsNavigationRow(label = "How exercises work", onClick = onHowExercisesWorkClick)
+        SettingsSection(label = "safety") {
+            SettingsToggleRow(
+                label = "Check-in alerts",
+                checked = uiState.safetyCheckInEnabled,
+                onCheckedChange = onSafetyCheckInToggled,
+            )
+            SettingsDivider()
+            SettingsNavigationRow(label = "Emergency contact", onClick = onEmergencyContactClick)
         }
 
         SettingsSection(label = "account") {
             SettingsNavigationRow(label = "Friends")
-            SettingsDivider()
-            // The one real row on this screen for this first pass -- see ProfileScreen's KDoc.
-            SettingsNavigationRow(
-                label = "Sign out",
-                onClick = onSignOutClicked,
-                showChevron = false,
-            )
+        }
+
+        // Outside every card and full width, so the one destructive/committal action is not
+        // mistaken for a settings row. A guest gets "Create account" here instead of "Sign out":
+        // signing out of an anonymous account would discard it for good.
+        if (uiState.isGuest) {
+            RepMateButton(text = "Create account", onClick = onCreateAccountClicked)
+        } else {
+            SignOutButton(onClick = onSignOutClicked)
         }
     }
+}
+
+/** Full-width outlined button in the error colour role -- deliberately not the filled primary style. */
+@Composable
+private fun SignOutButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+        contentPadding = PaddingValues(vertical = 14.dp, horizontal = 24.dp),
+    ) {
+        Text("Sign out")
+    }
+}
+
+/** Asked before signing out, since it returns the user to Welcome and clears the back stack. */
+@Composable
+private fun SignOutConfirmationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sign out?") },
+        text = { Text("You'll return to the welcome screen and need to log in again to come back.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Sign out", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -338,6 +409,7 @@ private fun ProfileHeader(
             text = caption,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -462,7 +534,7 @@ private fun SettingsToggleRow(
 }
 
 /**
- * A settings row that shows a trailing chevron (or none, for an action row like "Sign out").
+ * A settings row that shows a trailing chevron (or none, for an action row).
  * Non-null [onClick] rows are real; the rest ([onClick] left null) are static placeholders for
  * this first pass, per this screen's explicit scoping (today that is just "Friends").
  */
@@ -578,32 +650,49 @@ private val PREVIEW_STATE =
         darkThemeEnabled = true,
     )
 
-@Preview(name = "Light", showBackground = true, widthDp = 360, heightDp = 800)
+private val GUEST_PREVIEW_STATE =
+    PREVIEW_STATE.copy(
+        name = "Guest",
+        avatarInitial = null,
+        caption = "Guest session · create an account to keep your progress",
+        isGuest = true,
+        sessionsCount = 3,
+        totalReps = 30,
+    )
+
 @Composable
-private fun ProfileScreenLightPreview() {
-    RepMateTheme(darkTheme = false) {
-        ProfileContent(
-            uiState = PREVIEW_STATE,
-            onSignOutClicked = {},
-            onHapticFeedbackToggled = {},
-            onSpokenRepCountToggled = {},
-            onDarkThemeToggled = {},
-            onRecalibrateClick = {},
-        )
-    }
+private fun ProfilePreviewBody(uiState: ProfileUiState) {
+    ProfileContent(
+        uiState = uiState,
+        onSignOutClicked = {},
+        onCreateAccountClicked = {},
+        onHapticFeedbackToggled = {},
+        onSpokenRepCountToggled = {},
+        onDarkThemeToggled = {},
+        onRecalibrateClick = {},
+    )
 }
 
-@Preview(name = "Dark", showBackground = true, widthDp = 360, heightDp = 800)
+@Preview(name = "Signed in - Light", showBackground = true, widthDp = 360, heightDp = 1000)
+@Composable
+private fun ProfileScreenLightPreview() {
+    RepMateTheme(darkTheme = false) { ProfilePreviewBody(PREVIEW_STATE) }
+}
+
+@Preview(name = "Signed in - Dark", showBackground = true, widthDp = 360, heightDp = 1000)
 @Composable
 private fun ProfileScreenDarkPreview() {
-    RepMateTheme(darkTheme = true) {
-        ProfileContent(
-            uiState = PREVIEW_STATE,
-            onSignOutClicked = {},
-            onHapticFeedbackToggled = {},
-            onSpokenRepCountToggled = {},
-            onDarkThemeToggled = {},
-            onRecalibrateClick = {},
-        )
-    }
+    RepMateTheme(darkTheme = true) { ProfilePreviewBody(PREVIEW_STATE) }
+}
+
+@Preview(name = "Guest - Light", showBackground = true, widthDp = 360, heightDp = 1000)
+@Composable
+private fun ProfileScreenGuestLightPreview() {
+    RepMateTheme(darkTheme = false) { ProfilePreviewBody(GUEST_PREVIEW_STATE) }
+}
+
+@Preview(name = "Guest - Dark", showBackground = true, widthDp = 360, heightDp = 1000)
+@Composable
+private fun ProfileScreenGuestDarkPreview() {
+    RepMateTheme(darkTheme = true) { ProfilePreviewBody(GUEST_PREVIEW_STATE) }
 }

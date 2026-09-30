@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Everything [ProfileScreen] renders: the header (real, derived from [FirebaseAuth]), the dark
+ * Everything [ProfileScreen] renders: the header (real, derived from [FirebaseAuth], including
+ * [ProfileUiState.isGuest]), the dark
  * theme toggle (real, backed by [ThemePreferences]), the haptic feedback and spoken rep count
  * toggles (real, backed by [WorkoutPreferences]), [ProfileUiState.sessionsCount],
  * [ProfileUiState.totalReps] and [ProfileUiState.averageScore] (real, derived from
@@ -34,6 +35,12 @@ data class ProfileUiState(
     /** Null means "show the generic person-silhouette fallback" -- see [com.repmate.ui.auth.accountDisplayFor]. */
     val avatarInitial: String? = null,
     val caption: String = "",
+    /**
+     * True for an anonymous (guest) session. Profile hides "Sign out" for a guest -- signing out
+     * of an anonymous account discards it for good -- and offers "Create account" instead, which
+     * upgrades the same account in place so the guest's history is kept.
+     */
+    val isGuest: Boolean = false,
     // Real, from SessionRepository -- see the ProfileViewModel init block. Both start at 0, the
     // correct value for a brand-new user with no sessions yet, and update the moment a session
     // is saved.
@@ -148,8 +155,30 @@ class ProfileViewModel
          * call), so unlike sign-in there's no loading state to show before firing [signedOut].
          */
         fun onSignOutClicked() {
+            // Belt and braces: the screen hides the button for a guest, but signing out of an
+            // anonymous account can never be undone, so refuse here too rather than trust the UI.
+            if (firebaseAuth.currentUser?.isAnonymous == true) return
             firebaseAuth.signOut()
             _signedOut.trySend(Unit)
+        }
+
+        /**
+         * Re-reads the account header (name, avatar, caption, guest flag). Called each time the
+         * screen enters composition: upgrading a guest to a real account (see
+         * `AuthViewModel.onCreateAccountClicked`) mutates the current user in place and does not
+         * fire Firebase's auth-state listener, so without this the header would keep saying
+         * "Guest session" after the user returns from Sign up.
+         */
+        fun refreshAccount() {
+            val account = accountStateFor(firebaseAuth)
+            _uiState.update {
+                it.copy(
+                    name = account.name,
+                    avatarInitial = account.avatarInitial,
+                    caption = account.caption,
+                    isGuest = account.isGuest,
+                )
+            }
         }
 
         fun onDarkThemeToggled(enabled: Boolean) {
@@ -206,11 +235,30 @@ internal fun averageRepScore(sessions: List<WorkoutSession>): Float {
     return if (scores.isEmpty()) 0f else scores.average().toFloat()
 }
 
-private fun buildInitialUiState(firebaseAuth: FirebaseAuth): ProfileUiState {
+/** The header fields [ProfileUiState] takes from the signed-in user, in one place for init and [ProfileViewModel.refreshAccount]. */
+private data class AccountState(
+    val name: String,
+    val avatarInitial: String?,
+    val caption: String,
+    val isGuest: Boolean,
+)
+
+private fun accountStateFor(firebaseAuth: FirebaseAuth): AccountState {
     val accountDisplay = accountDisplayFor(firebaseAuth)
-    return ProfileUiState(
+    return AccountState(
         name = accountDisplay.name,
         avatarInitial = accountDisplay.avatarInitial,
         caption = accountDisplay.caption,
+        isGuest = firebaseAuth.currentUser?.isAnonymous == true,
+    )
+}
+
+private fun buildInitialUiState(firebaseAuth: FirebaseAuth): ProfileUiState {
+    val account = accountStateFor(firebaseAuth)
+    return ProfileUiState(
+        name = account.name,
+        avatarInitial = account.avatarInitial,
+        caption = account.caption,
+        isGuest = account.isGuest,
     )
 }

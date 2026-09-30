@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
 import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.repmate.data.cloud.FirestoreUserProfileDataSource
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -88,8 +90,22 @@ class AuthViewModel
         }
 
         /**
+         * The current user when it is an anonymous (guest) session, else null. Sign-up uses this to
+         * decide between upgrading the guest in place and creating a brand-new account.
+         */
+        private fun currentGuest(): FirebaseUser? = firebaseAuth.currentUser?.takeIf { it.isAnonymous }
+
+        /**
          * Validates client-side first (Golden Rule: don't rely on the Firebase round-trip for
-         * obvious cases), then calls `createUserWithEmailAndPassword`.
+         * obvious cases), then creates the account.
+         *
+         * If the current user is a guest, the email/password is *linked* to that anonymous account
+         * with `linkWithCredential` instead of calling `createUserWithEmailAndPassword`. Linking
+         * keeps the same UID, so the guest's sessions and cloud data carry over; creating a new
+         * account would orphan them under the old anonymous UID. If the email already belongs to
+         * another account, linking fails with a collision and the user simply stays a guest --
+         * we deliberately do not fall back to signing in to that account, which would abandon the
+         * guest's data.
          */
         fun onCreateAccountClicked() {
             val state = _uiState.value
@@ -102,13 +118,24 @@ class AuthViewModel
 
             _uiState.update { it.copy(isEmailLoading = true, generalError = null) }
             viewModelScope.launch {
+                val guest = currentGuest()
                 try {
-                    firebaseAuth.createUserWithEmailAndPassword(state.email, state.password).await()
+                    if (guest != null) {
+                        guest.linkWithCredential(EmailAuthProvider.getCredential(state.email, state.password)).await()
+                    } else {
+                        firebaseAuth.createUserWithEmailAndPassword(state.email, state.password).await()
+                    }
                     ensureUserProfile()
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {
-                    failEmail("An account with this email already exists.")
+                    failEmail(
+                        if (guest != null) {
+                            "An account with this email already exists. Use a different email to keep your guest progress."
+                        } else {
+                            "An account with this email already exists."
+                        },
+                    )
                 } catch (e: FirebaseAuthWeakPasswordException) {
                     failEmail(e.reason ?: "That password is too weak.")
                 } catch (e: FirebaseAuthInvalidCredentialsException) {
@@ -163,17 +190,33 @@ class AuthViewModel
          * exchange regardless of how the token was obtained, and regardless of which screen it
          * came from -- `signInWithCredential` transparently creates the account if this Google
          * identity is new, or logs in if it isn't, so sign-up and log-in need no separate paths.
+         *
+         * @param linkToGuest true only from the sign-up screen: if the current user is a guest, the
+         *   Google credential is linked to that anonymous account (same UID, so its data carries
+         *   over) instead of signing in. Log-in passes false, since logging in to an existing
+         *   account is by definition not an upgrade. A Google account that already belongs to
+         *   another user fails with a collision and the user stays a guest, as with email.
          */
         // Firebase config confirmed working (Auth providers, Google Sign-In fingerprint, Hilt
         // binding) - tested by Lisa, 15 Sep.
-        fun onGoogleIdTokenReceived(idToken: String) {
+        fun onGoogleIdTokenReceived(
+            idToken: String,
+            linkToGuest: Boolean = false,
+        ) {
             viewModelScope.launch {
+                val guest = if (linkToGuest) currentGuest() else null
                 try {
                     val credential = GoogleAuthProvider.getCredential(idToken, null)
-                    firebaseAuth.signInWithCredential(credential).await()
+                    if (guest != null) {
+                        guest.linkWithCredential(credential).await()
+                    } else {
+                        firebaseAuth.signInWithCredential(credential).await()
+                    }
                     ensureUserProfile()
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
+                } catch (e: FirebaseAuthUserCollisionException) {
+                    failGoogle("That Google account is already registered. Use a different account to keep your guest progress.")
                 } catch (e: FirebaseNetworkException) {
                     failGoogle("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {

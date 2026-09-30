@@ -44,6 +44,10 @@ import kotlinx.coroutines.launch
  * @param onBackClick invoked when the back chevron is tapped.
  * @param onSignUpSuccess invoked once, after either auth path succeeds.
  * @param onLogInClick invoked when the "Log in" link at the bottom is tapped.
+ * @param upgrade true when reached from a guest's Profile ("Create account"): the form upgrades
+ *   the guest's existing account instead of making a new one (see [AuthViewModel]), the copy says
+ *   so, and the "Log in" link is hidden -- logging in to another account would abandon the
+ *   guest's data. What happens on success is the caller's call, as always.
  */
 @Composable
 fun SignUpScreen(
@@ -51,6 +55,7 @@ fun SignUpScreen(
     onSignUpSuccess: () -> Unit,
     onLogInClick: () -> Unit,
     modifier: Modifier = Modifier,
+    upgrade: Boolean = false,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,7 +78,7 @@ fun SignUpScreen(
             coroutineScope.launch {
                 viewModel.onGoogleSignInStarted()
                 runCatching { requestGoogleIdToken(context, BuildConfig.GOOGLE_WEB_CLIENT_ID) }
-                    .onSuccess { idToken -> viewModel.onGoogleIdTokenReceived(idToken) }
+                    .onSuccess { idToken -> viewModel.onGoogleIdTokenReceived(idToken, linkToGuest = upgrade) }
                     .onFailure { error ->
                         if (error is GetCredentialCancellationException) {
                             viewModel.onGoogleSignInCancelled()
@@ -84,6 +89,7 @@ fun SignUpScreen(
             }
         },
         onLogInClick = onLogInClick,
+        upgrade = upgrade,
         modifier = modifier,
     )
 }
@@ -98,6 +104,7 @@ private fun SignUpContent(
     onGoogleClick: () -> Unit,
     onLogInClick: () -> Unit,
     modifier: Modifier = Modifier,
+    upgrade: Boolean = false,
 ) {
     // Box, not Column, is the root: LoadingOverlay is a later sibling here so it draws on top of
     // the whole screen and dims/blocks it, rather than needing its own placement logic.
@@ -128,7 +135,7 @@ private fun SignUpContent(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "track your reps across devices",
+                    text = if (upgrade) "keep your guest progress and track it across devices" else "track your reps across devices",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -196,11 +203,13 @@ private fun SignUpContent(
                 )
             }
 
-            AuthBottomPrompt(
-                promptText = "Already have an account? ",
-                actionText = "Log in",
-                onActionClick = onLogInClick,
-            )
+            if (!upgrade) {
+                AuthBottomPrompt(
+                    promptText = "Already have an account? ",
+                    actionText = "Log in",
+                    onActionClick = onLogInClick,
+                )
+            }
         }
 
         // uiState.isBusy covers both auth paths: set the moment either one starts (email/
@@ -315,6 +324,23 @@ private fun SignUpScreenDarkLoadingPreview() {
             onCreateAccountClick = {},
             onGoogleClick = {},
             onLogInClick = {},
+        )
+    }
+}
+
+@Preview(name = "Dark - Upgrade guest", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun SignUpScreenDarkUpgradePreview() {
+    RepMateTheme(darkTheme = true) {
+        SignUpContent(
+            uiState = AuthFormUiState(email = "jess@example.com"),
+            onBackClick = {},
+            onEmailChanged = {},
+            onPasswordChanged = {},
+            onCreateAccountClick = {},
+            onGoogleClick = {},
+            onLogInClick = {},
+            upgrade = true,
         )
     }
 }

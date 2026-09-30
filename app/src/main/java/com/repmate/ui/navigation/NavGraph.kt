@@ -70,6 +70,8 @@ enum class CalibrationEntryPoint {
  */
 object RepMateDestinations {
     const val WELCOME = "welcome"
+
+    /** Bare route, used by every `navigate(...)` call to Sign up and by `popUpTo`. The registered pattern is [SIGNUP_PATTERN]. */
     const val SIGNUP = "signup"
     const val LOGIN = "login"
     const val ONBOARDING = "onboarding"
@@ -85,6 +87,14 @@ object RepMateDestinations {
     const val ARG_CALIBRATION_ENTRY_POINT = "entryPoint"
     const val ARG_SESSION_ID = "sessionId"
     const val ARG_EMAIL = "email"
+    const val ARG_UPGRADE = "upgrade"
+
+    /**
+     * Sign up's registered route: `upgrade` is an optional query param defaulting to false, so the
+     * bare [SIGNUP] route keeps working for everyone. `upgrade=true` (see [signupUpgrade]) is the
+     * guest-upgrade mode reached from Profile.
+     */
+    const val SIGNUP_PATTERN = "signup?$ARG_UPGRADE={$ARG_UPGRADE}"
 
     /**
      * Route patterns for [NavHost]'s `composable(route = ...)` registration. `CALIBRATION` carries
@@ -124,6 +134,9 @@ object RepMateDestinations {
     fun motionReplay(sessionId: String) = "motion_replay/$sessionId"
 
     fun sessionDetail(sessionId: String) = "session_detail/$sessionId"
+
+    /** Sign up in guest-upgrade mode: links the new credentials to the current anonymous account. */
+    fun signupUpgrade(): String = "$SIGNUP?$ARG_UPGRADE=true"
 
     fun forgotPassword(email: String? = null): String =
         if (email.isNullOrBlank()) {
@@ -318,15 +331,31 @@ fun RepMateNavGraph(
                     onGuestSignInSuccess = navigateAfterAuthSuccess,
                 )
             }
-            composable(RepMateDestinations.SIGNUP) {
+            composable(
+                route = RepMateDestinations.SIGNUP_PATTERN,
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_UPGRADE) {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        },
+                    ),
+            ) { backStackEntry ->
+                val upgrade = backStackEntry.arguments?.getBoolean(RepMateDestinations.ARG_UPGRADE) ?: false
                 SignUpScreen(
                     onBackClick = { navController.popBackStack() },
-                    onSignUpSuccess = navigateAfterAuthSuccess,
+                    // An upgrade keeps the same account, so there is no onboarding decision to make
+                    // and Welcome is not on the back stack: just return to Profile, which is
+                    // directly beneath this screen. Refreshing its header is Profile's job.
+                    onSignUpSuccess = {
+                        if (upgrade) navController.popBackStack() else navigateAfterAuthSuccess()
+                    },
+                    upgrade = upgrade,
                     onLogInClick = {
                         // Replaces this screen on the back stack rather than stacking on top of
                         // it, so back from Log in returns to Welcome, not bounces through Signup.
                         navController.navigate(RepMateDestinations.LOGIN) {
-                            popUpTo(RepMateDestinations.SIGNUP) { inclusive = true }
+                            popUpTo(RepMateDestinations.SIGNUP_PATTERN) { inclusive = true }
                         }
                     },
                 )
@@ -428,6 +457,7 @@ fun RepMateNavGraph(
                         }
                     },
                     onRecalibrateClick = { showRecalibratePicker = true },
+                    onCreateAccountClick = { navController.navigate(RepMateDestinations.signupUpgrade()) },
                 )
 
                 if (showRecalibratePicker) {
