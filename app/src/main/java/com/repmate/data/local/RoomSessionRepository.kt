@@ -144,7 +144,11 @@ class RoomSessionRepository @Inject constructor(
         val result = sessionDao.getBestSessionScore(
             ownerId = ownerId,
             exercise = exercise.name
-        ) ?: return null
+        )
+
+        if (result == null) {
+            return null
+        }
 
         return BestWorkoutScore(
             score = result.averageScore,
