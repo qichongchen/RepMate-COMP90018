@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.repmate.data.repo.SessionRepository
+import com.repmate.engine.WorkoutSession
 import com.repmate.safety.CheckInScheduler
 import com.repmate.safety.SafetyCheckInPreferences
 import com.repmate.safety.SafetyContact
@@ -23,10 +24,10 @@ import javax.inject.Inject
 /**
  * Everything [ProfileScreen] renders: the header (real, derived from [FirebaseAuth]), the dark
  * theme toggle (real, backed by [ThemePreferences]), the haptic feedback and spoken rep count
- * toggles (real, backed by [WorkoutPreferences]), [ProfileUiState.sessionsCount] and
- * [ProfileUiState.totalReps] (real, derived from [SessionRepository.recent]), and the remaining
- * rows below, which are static placeholders for this first pass -- see the TODO on each
- * placeholder field/row for what it should read from once that data source exists.
+ * toggles (real, backed by [WorkoutPreferences]), [ProfileUiState.sessionsCount],
+ * [ProfileUiState.totalReps] and [ProfileUiState.averageScore] (real, derived from
+ * [SessionRepository.recent]), and the "Friends" row, which is a static placeholder for this
+ * first pass.
  */
 data class ProfileUiState(
     val name: String = "",
@@ -38,8 +39,12 @@ data class ProfileUiState(
     // is saved.
     val sessionsCount: Int = 0,
     val totalReps: Int = 0,
-    // TODO(data.local): still a fixed placeholder, unlike the two counts above.
-    val averageScore: Float = 8.1f,
+    /**
+     * Real, derived from [SessionRepository.recent] like the two counts above: the mean score of
+     * every rep across all sessions (see [averageRepScore]). 0 with no reps -- the screen shows
+     * a dash then, not "0.0".
+     */
+    val averageScore: Float = 0f,
     /** Real -- mirrors [WorkoutPreferences.isHapticFeedbackEnabled]. */
     val hapticFeedbackEnabled: Boolean = true,
     /** Real -- mirrors [WorkoutPreferences.isSpokenRepCountEnabled]. */
@@ -57,9 +62,9 @@ data class ProfileUiState(
 
 /**
  * Backs [ProfileScreen]. The header, sign-out, the dark theme, haptic feedback and spoken rep
- * count toggles, and the two session stats are real; everything else in [ProfileUiState] is a fixed placeholder, per the explicit scoping
- * for this screen's first pass -- see the TODOs on [ProfileUiState] for what each one should
- * eventually read from.
+ * count toggles, and the three session stats (sessions, total reps, average score) are real;
+ * the "Friends" row is the only remaining placeholder, per the explicit scoping for this
+ * screen's first pass.
  */
 @HiltViewModel
 class ProfileViewModel
@@ -114,6 +119,7 @@ class ProfileViewModel
                         it.copy(
                             sessionsCount = sessions.size,
                             totalReps = sessions.sumOf { session -> session.reps.size },
+                            averageScore = averageRepScore(sessions),
                         )
                     }
                 }
@@ -186,6 +192,19 @@ class ProfileViewModel
             const val MAX_SESSIONS_FOR_STATS = 10_000
         }
     }
+
+/**
+ * Mean rep score across every rep of every session in [sessions], or 0 when there are no reps.
+ *
+ * Pooled on purpose, not an average of per-session averages: a 1-rep session scoring 10 and a
+ * 3-rep session scoring 6 pool to (10 + 6 * 3) / 4 = 7.0, whereas averaging the two session
+ * averages would give 8.0 and let a single rep outweigh three. Pooling makes the figure "the
+ * average rep", which is what the label promises.
+ */
+internal fun averageRepScore(sessions: List<WorkoutSession>): Float {
+    val scores = sessions.flatMap { session -> session.reps }.map { rep -> rep.score }
+    return if (scores.isEmpty()) 0f else scores.average().toFloat()
+}
 
 private fun buildInitialUiState(firebaseAuth: FirebaseAuth): ProfileUiState {
     val accountDisplay = accountDisplayFor(firebaseAuth)

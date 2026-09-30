@@ -51,6 +51,7 @@ import com.repmate.engine.ExerciseType
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
 import com.repmate.ui.tutorial.ExerciseTutorialDialog
+import java.util.Locale
 
 /**
  * The Profile tab: an account header, a stats summary, and grouped settings rows. Hosts the
@@ -61,9 +62,9 @@ import com.repmate.ui.tutorial.ExerciseTutorialDialog
  *
  * For this first pass, only the header (account name/avatar/caption), "Sign out", the "Haptic
  * feedback"/"Spoken rep count"/"Dark theme" toggles, "Recalibrate", "How exercises work", and the
- * safety check-in section (toggle + emergency contact) are real -- the average score and the "Friends" row are
- * static placeholders. See the TODO on [ProfileUiState.averageScore] for what it should
- * eventually read from.
+ * safety check-in section (toggle + emergency contact) are real, as are the three stats in the
+ * stats card (sessions, total reps, average score) -- the "Friends" row is the only static
+ * placeholder.
  *
  * ## Safety check-in
  * Turning the toggle on doesn't call [ProfileViewModel.onSafetyCheckInToggled] directly -- it
@@ -355,7 +356,9 @@ private fun StatsCard(
         ) {
             StatColumn(value = sessionsCount.toString(), label = "sessions")
             StatColumn(value = totalReps.toString(), label = "total reps")
-            StatColumn(value = "%.1f".format(averageScore), label = "avg score")
+            // A brand-new user has no reps, so there is no score to show yet -- a dash, not "0.0".
+            val averageText = if (totalReps == 0) "–" else String.format(Locale.US, "%.1f", averageScore)
+            StatColumn(value = averageText, label = "avg score")
         }
     }
 }
@@ -461,7 +464,7 @@ private fun SettingsToggleRow(
 /**
  * A settings row that shows a trailing chevron (or none, for an action row like "Sign out").
  * Non-null [onClick] rows are real; the rest ([onClick] left null) are static placeholders for
- * this first pass, per this screen's explicit scoping -- see the TODOs on [ProfileUiState].
+ * this first pass, per this screen's explicit scoping (today that is just "Friends").
  */
 @Composable
 private fun SettingsNavigationRow(
