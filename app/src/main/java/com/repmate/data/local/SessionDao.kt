@@ -65,4 +65,27 @@ interface SessionDao {
             insertRepScores(repScores)
         }
     }
+
+    @Transaction
+    suspend fun insertSessionIfMissing(
+        session: WorkoutSessionEntity,
+        repScores: List<RepScoreEntity>
+    ): Boolean {
+        val existing = getSessionById(
+            id = session.id,
+            ownerId = session.ownerId
+        )
+
+        if (existing != null) {
+            return false
+        }
+
+        insertSession(session)
+
+        if (repScores.isNotEmpty()) {
+            insertRepScores(repScores)
+        }
+
+        return true
+    }
 }

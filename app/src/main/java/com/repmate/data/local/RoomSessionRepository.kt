@@ -91,6 +91,25 @@ class RoomSessionRepository @Inject constructor(
         }
     }
 
+    suspend fun insertIfMissing(
+        session: WorkoutSessionEntity,
+        repScores: List<RepScoreEntity>
+    ): Boolean {
+        return try {
+            sessionDao.insertSessionIfMissing(
+                session = session,
+                repScores = repScores
+            )
+        } catch (e: SQLiteException) {
+            Log.e(
+                "RoomSessionRepository",
+                "Failed to restore session ${session.id}",
+                e
+            )
+            false
+        }
+    }
+
     override fun recent(limit: Int): Flow<List<WorkoutSession>> {
         require(limit > 0) {
             "limit must be positive"
