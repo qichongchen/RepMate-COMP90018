@@ -178,4 +178,25 @@ class PushupRepDetectorTest {
         assertFailsWith<IllegalArgumentException> { PushupRepDetector(medianWindow = 4) }
         assertTrue(PushupRepDetector.DEFAULT_DOWN_DEGREES < PushupRepDetector.DEFAULT_UP_DEGREES)
     }
+
+    @Test
+    fun `a completed rep reports how deep it went`() {
+        val detector = PushupRepDetector()
+        val transitions = rep(bottom = 92.0).mapNotNull { detector.update(it) }
+
+        val completed = transitions.last { it.repCompleted }
+        assertNotNull(completed.bottomDegrees)
+        assertTrue(
+            completed.bottomDegrees!! <= 95.0,
+            "expected close to the 92 degree bottom, got ${completed.bottomDegrees}",
+        )
+    }
+
+    @Test
+    fun `bottomDegrees is null except on the transition that completes the rep`() {
+        val detector = PushupRepDetector()
+        val transitions = rep(bottom = 92.0).mapNotNull { detector.update(it) }
+
+        transitions.dropLast(1).forEach { assertNull(it.bottomDegrees) }
+    }
 }
