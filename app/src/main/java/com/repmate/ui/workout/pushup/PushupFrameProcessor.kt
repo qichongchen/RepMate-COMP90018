@@ -54,6 +54,7 @@ class PushupFrameProcessor(
         val armLocked: Boolean,
         val phase: PushupRepDetector.Phase,
         val repCompleted: Boolean,
+        val repBottomDegrees: Double? = null,
     )
 
     private var tracking: Tracking = Tracking.NO_PERSON
@@ -92,11 +93,14 @@ class PushupFrameProcessor(
         }
 
         var repCompleted = false
+        var repBottomDegrees: Double? = null
         if (status.countsReps) {
             val angle = armLock.armFor(left, right)?.let { elbowAngleDegrees(it) }
-            repCompleted = repDetector.update(angle)?.repCompleted == true
+            val transition = repDetector.update(angle)
+            repCompleted = transition?.repCompleted == true
+            repBottomDegrees = transition?.bottomDegrees
         }
-        return Result(status, tracking, armLock.isLocked, repDetector.phase, repCompleted)
+        return Result(status, tracking, armLock.isLocked, repDetector.phase, repCompleted, repBottomDegrees)
     }
 
     /** Forgets the arm lock and the half-finished rep, e.g. after the camera is switched. */
