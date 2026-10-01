@@ -312,16 +312,8 @@ fun RepMateNavGraph(
     // identically: the tab highlights correctly and the back stack doesn't grow.
     val navigateToBottomNavRoute: (String) -> Unit = { route ->
         navController.navigate(route) {
-            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
-            // is already on, and restore each tab's state when they switch back to it.
-            // NOTE: pops to HOME, not findStartDestination(). The graph's start destination is
-            // fixed at launch, so for a user who signed in this session it is Welcome, which is no
-            // longer on the back stack -- the pop would then silently do nothing and a second Home
-            // would stack on top of whatever screen "Done" was pressed from. HOME is always the
-            // root of the signed-in back stack (see navigateAfterAuthSuccess and Onboarding).
-            popUpTo(RepMateDestinations.HOME) { saveState = true }
+            popUpTo(RepMateDestinations.HOME)
             launchSingleTop = true
-            restoreState = true
         }
     }
 
