@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.repmate.data.repo.FriendRepository
 
 data class LeaderboardUiState(
     val entries: List<LeaderboardEntry> = emptyList(),
@@ -23,6 +24,7 @@ data class LeaderboardUiState(
 @HiltViewModel
 class LeaderboardViewModel @Inject constructor(
     private val leaderboardRepository: LeaderboardRepository,
+    private val friendRepository: FriendRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LeaderboardUiState())
