@@ -57,10 +57,27 @@ fun LeaderboardScreen(
         ) {
             Text(
                 text = "FRIENDS",
-                fontWeight = FontWeight.Bold,
+                fontWeight = if (uiState.selectedType == LeaderboardType.FRIENDS) {
+                    FontWeight.Bold
+                } else {
+                    FontWeight.Normal
+                },
+                modifier = Modifier.clickable {
+                    viewModel.selectLeaderboard(LeaderboardType.FRIENDS)
+                },
             )
 
-            Text(text = "GLOBAL")
+            Text(
+                text = "GLOBAL",
+                fontWeight = if (uiState.selectedType == LeaderboardType.GLOBAL) {
+                    FontWeight.Bold
+                } else {
+                    FontWeight.Normal
+                },
+                modifier = Modifier.clickable {
+                    viewModel.selectLeaderboard(LeaderboardType.GLOBAL)
+                },
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))

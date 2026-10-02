@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.repmate.data.repo.FriendRepository
 import com.repmate.data.repo.observeFriends
+import kotlinx.coroutines.Job
 
 
 
@@ -36,9 +37,16 @@ class LeaderboardViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(LeaderboardUiState())
     val uiState: StateFlow<LeaderboardUiState> = _uiState.asStateFlow()
+    private var leaderboardJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        loadFriendsLeaderboard()
+    }
+
+    private fun loadFriendsLeaderboard() {
+        leaderboardJob?.cancel()
+
+        leaderboardJob = viewModelScope.launch {
             friendRepository.observeFriends().collect { friends ->
                 val friendUserIds = friends.map { it.userId }
 
@@ -50,6 +58,7 @@ class LeaderboardViewModel @Inject constructor(
                                 is LeaderboardLoad.Loaded -> {
                                     _uiState.value.copy(
                                         entries = load.entries,
+                                        selectedType = LeaderboardType.FRIENDS,
                                         isUnavailable = false,
                                     )
                                 }
@@ -63,10 +72,44 @@ class LeaderboardViewModel @Inject constructor(
 
                                     _uiState.value.copy(
                                         entries = emptyList(),
+                                        selectedType = LeaderboardType.FRIENDS,
                                         isUnavailable = true,
                                     )
                                 }
                             }
+                    }
+            }
+        }
+    }
+
+    private fun loadGlobalLeaderboard() {
+        leaderboardJob?.cancel()
+
+        leaderboardJob = viewModelScope.launch {
+            leaderboardRepository.observeTop(20).collect { load ->
+                _uiState.value =
+                    when (load) {
+                        is LeaderboardLoad.Loaded -> {
+                            _uiState.value.copy(
+                                entries = load.entries,
+                                selectedType = LeaderboardType.GLOBAL,
+                                isUnavailable = false,
+                            )
+                        }
+
+                        is LeaderboardLoad.Failed -> {
+                            Log.w(
+                                "RepMateLeaderboard",
+                                "global leaderboard unavailable",
+                                load.cause
+                            )
+
+                            _uiState.value.copy(
+                                entries = emptyList(),
+                                selectedType = LeaderboardType.GLOBAL,
+                                isUnavailable = true,
+                            )
+                        }
                     }
             }
         }
@@ -77,7 +120,13 @@ class LeaderboardViewModel @Inject constructor(
 
         _uiState.value = _uiState.value.copy(
             selectedType = type,
+            entries = emptyList(),
             isUnavailable = false,
         )
+
+        when (type) {
+            LeaderboardType.FRIENDS -> loadFriendsLeaderboard()
+            LeaderboardType.GLOBAL -> loadGlobalLeaderboard()
+        }
     }
 }
