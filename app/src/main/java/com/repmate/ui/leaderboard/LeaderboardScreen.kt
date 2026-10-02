@@ -98,6 +98,16 @@ fun LeaderboardScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        } else if (uiState.entries.isEmpty()) {
+            Text(
+                text = if (uiState.selectedType == LeaderboardType.FRIENDS) {
+                    "No friend scores yet."
+                } else {
+                    "No leaderboard scores yet."
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         LazyColumn(
