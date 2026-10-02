@@ -52,4 +52,47 @@ class FirestoreLeaderboardRepository @Inject constructor(
                 listener.remove()
             }
         }
+
+    override fun friendsLeaderboard(
+        friendUserIds: List<String>
+    ): Flow<List<LeaderboardEntry>> =
+        callbackFlow {
+            if (friendUserIds.isEmpty()) {
+                trySend(emptyList())
+                close()
+                return@callbackFlow
+            }
+
+            val listener = firestore
+                .collection("leaderboard")
+                .whereIn(
+                    com.google.firebase.firestore.FieldPath.documentId(),
+                    friendUserIds
+                )
+                .addSnapshotListener { snapshot, error ->
+
+                    if (error != null) {
+                        Log.w(TAG, "friends leaderboard query failed", error)
+                        close(error)
+                        return@addSnapshotListener
+                    }
+
+                    val entries = snapshot?.documents
+                        ?.map { document ->
+                            LeaderboardEntry(
+                                userId = document.id,
+                                displayName = document.getString("displayName") ?: "Unknown",
+                                points = document.getLong("points")?.toInt() ?: 0,
+                            )
+                        }
+                        ?.sortedByDescending { it.points }
+                        .orEmpty()
+
+                    trySend(entries)
+                }
+
+            awaitClose {
+                listener.remove()
+            }
+        }
 }

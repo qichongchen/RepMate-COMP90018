@@ -31,6 +31,7 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
+import com.repmate.ui.friends.FriendsScreen
 import com.repmate.ui.ghostduel.GhostDuelScreen
 import com.repmate.ui.history.HistoryScreen
 import com.repmate.ui.history.SessionDetailScreen
@@ -79,6 +80,8 @@ object RepMateDestinations {
     const val HISTORY = "history"
     const val LEADERBOARD = "leaderboard"
     const val PROFILE = "profile"
+
+    const val FRIENDS = "friends"
 
     /** Bare route, no arguments -- the friend/exercise picks happen on the screen itself, not carried in from the caller. Reached only from Home's Ghost Duel banner. */
     const val GHOST_DUEL = "ghost_duel"
@@ -470,7 +473,7 @@ fun RepMateNavGraph(
                     onStartWorkoutClick = startExercise,
                     // TODO: once a real friends-management screen exists (Jasper's work), point this at
                     // that screen instead of Profile, and wire Profile's own "Friends" row the same way.
-                    onAddFriendClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                    onAddFriendClick = { navController.navigate(RepMateDestinations.FRIENDS) },
                 )
             }
             composable(RepMateDestinations.HISTORY) {
@@ -509,7 +512,12 @@ fun RepMateNavGraph(
                         }
                     },
                     onRecalibrateClick = { showRecalibratePicker = true },
-                    onCreateAccountClick = { navController.navigate(RepMateDestinations.signupUpgrade()) },
+                    onCreateAccountClick = {
+                        navController.navigate(RepMateDestinations.signupUpgrade())
+                    },
+                    onFriendsClick = {
+                        navController.navigate(RepMateDestinations.FRIENDS)
+                    },
                 )
 
                 if (showRecalibratePicker) {
@@ -521,6 +529,14 @@ fun RepMateNavGraph(
                         onDismissRequest = { showRecalibratePicker = false },
                     )
                 }
+            }
+
+            composable(RepMateDestinations.FRIENDS) {
+                FriendsScreen(
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                )
             }
 
             composable(

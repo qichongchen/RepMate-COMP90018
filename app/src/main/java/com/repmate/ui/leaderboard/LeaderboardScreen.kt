@@ -57,10 +57,27 @@ fun LeaderboardScreen(
         ) {
             Text(
                 text = "FRIENDS",
-                fontWeight = FontWeight.Bold,
+                fontWeight = if (uiState.selectedType == LeaderboardType.FRIENDS) {
+                    FontWeight.Bold
+                } else {
+                    FontWeight.Normal
+                },
+                modifier = Modifier.clickable {
+                    viewModel.selectLeaderboard(LeaderboardType.FRIENDS)
+                },
             )
 
-            Text(text = "GLOBAL")
+            Text(
+                text = "GLOBAL",
+                fontWeight = if (uiState.selectedType == LeaderboardType.GLOBAL) {
+                    FontWeight.Bold
+                } else {
+                    FontWeight.Normal
+                },
+                modifier = Modifier.clickable {
+                    viewModel.selectLeaderboard(LeaderboardType.GLOBAL)
+                },
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -78,6 +95,16 @@ fun LeaderboardScreen(
         if (uiState.isUnavailable) {
             Text(
                 text = "The leaderboard is unavailable right now. Try again later.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (uiState.entries.isEmpty()) {
+            Text(
+                text = if (uiState.selectedType == LeaderboardType.FRIENDS) {
+                    "No friend scores yet."
+                } else {
+                    "No leaderboard scores yet."
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -28,3 +28,14 @@ fun LeaderboardRepository.observeTop(limit: Int): Flow<LeaderboardLoad> =
     topPlayers(limit)
         .map<List<LeaderboardEntry>, LeaderboardLoad> { LeaderboardLoad.Loaded(it) }
         .catch { emit(LeaderboardLoad.Failed(it)) }
+
+fun LeaderboardRepository.observeFriends(
+    friendUserIds: List<String>
+): Flow<LeaderboardLoad> =
+    friendsLeaderboard(friendUserIds)
+        .map<List<LeaderboardEntry>, LeaderboardLoad> {
+            LeaderboardLoad.Loaded(it)
+        }
+        .catch {
+            emit(LeaderboardLoad.Failed(it))
+        }
