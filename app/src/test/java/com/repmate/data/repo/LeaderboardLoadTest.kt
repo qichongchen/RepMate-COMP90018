@@ -20,8 +20,15 @@ import kotlin.test.assertSame
 @OptIn(ExperimentalCoroutinesApi::class)
 class LeaderboardLoadTest {
 
-    private class FakeLeaderboardRepository(private val source: () -> Flow<List<LeaderboardEntry>>) : LeaderboardRepository {
+    private class FakeLeaderboardRepository(
+        private val source: () -> Flow<List<LeaderboardEntry>>
+    ) : LeaderboardRepository {
+
         override fun topPlayers(limit: Int): Flow<List<LeaderboardEntry>> = source()
+
+        override fun friendsLeaderboard(
+            friendUserIds: List<String>
+        ): Flow<List<LeaderboardEntry>> = source()
     }
 
     private val priya = LeaderboardEntry(userId = "u1", displayName = "Priya", points = 1420)
