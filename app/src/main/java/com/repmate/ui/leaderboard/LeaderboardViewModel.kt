@@ -13,33 +13,120 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.repmate.data.repo.FriendRepository
+import com.repmate.data.repo.observeFriends
+import kotlinx.coroutines.Job
 
+
+
+enum class LeaderboardType {
+    FRIENDS,
+    GLOBAL,
+}
 data class LeaderboardUiState(
     val entries: List<LeaderboardEntry> = emptyList(),
-    /** True when the query failed; [entries] is then empty. */
+    val selectedType: LeaderboardType = LeaderboardType.FRIENDS,
     val isUnavailable: Boolean = false,
 )
 
 @HiltViewModel
 class LeaderboardViewModel @Inject constructor(
     private val leaderboardRepository: LeaderboardRepository,
+    private val friendRepository: FriendRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LeaderboardUiState())
     val uiState: StateFlow<LeaderboardUiState> = _uiState.asStateFlow()
+    private var leaderboardJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        loadFriendsLeaderboard()
+    }
+
+    private fun loadFriendsLeaderboard() {
+        leaderboardJob?.cancel()
+
+        leaderboardJob = viewModelScope.launch {
+            friendRepository.observeFriends().collect { friends ->
+                val friendUserIds = friends.map { it.userId }
+
+                leaderboardRepository
+                    .observeFriends(friendUserIds)
+                    .collect { load ->
+                        _uiState.value =
+                            when (load) {
+                                is LeaderboardLoad.Loaded -> {
+                                    _uiState.value.copy(
+                                        entries = load.entries,
+                                        selectedType = LeaderboardType.FRIENDS,
+                                        isUnavailable = false,
+                                    )
+                                }
+
+                                is LeaderboardLoad.Failed -> {
+                                    Log.w(
+                                        "RepMateLeaderboard",
+                                        "friends leaderboard unavailable",
+                                        load.cause
+                                    )
+
+                                    _uiState.value.copy(
+                                        entries = emptyList(),
+                                        selectedType = LeaderboardType.FRIENDS,
+                                        isUnavailable = true,
+                                    )
+                                }
+                            }
+                    }
+            }
+        }
+    }
+
+    private fun loadGlobalLeaderboard() {
+        leaderboardJob?.cancel()
+
+        leaderboardJob = viewModelScope.launch {
             leaderboardRepository.observeTop(20).collect { load ->
                 _uiState.value =
                     when (load) {
-                        is LeaderboardLoad.Loaded -> LeaderboardUiState(entries = load.entries)
+                        is LeaderboardLoad.Loaded -> {
+                            _uiState.value.copy(
+                                entries = load.entries,
+                                selectedType = LeaderboardType.GLOBAL,
+                                isUnavailable = false,
+                            )
+                        }
+
                         is LeaderboardLoad.Failed -> {
-                            Log.w("RepMateLeaderboard", "leaderboard unavailable on Leaderboard screen", load.cause)
-                            LeaderboardUiState(isUnavailable = true)
+                            Log.w(
+                                "RepMateLeaderboard",
+                                "global leaderboard unavailable",
+                                load.cause
+                            )
+
+                            _uiState.value.copy(
+                                entries = emptyList(),
+                                selectedType = LeaderboardType.GLOBAL,
+                                isUnavailable = true,
+                            )
                         }
                     }
             }
+        }
+    }
+
+    fun selectLeaderboard(type: LeaderboardType) {
+        if (_uiState.value.selectedType == type) return
+
+        _uiState.value = _uiState.value.copy(
+            selectedType = type,
+            entries = emptyList(),
+            isUnavailable = false,
+        )
+
+        when (type) {
+            LeaderboardType.FRIENDS -> loadFriendsLeaderboard()
+            LeaderboardType.GLOBAL -> loadGlobalLeaderboard()
         }
     }
 }

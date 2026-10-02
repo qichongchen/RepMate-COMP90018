@@ -65,6 +65,7 @@ class PushupRepDetector(
 
     /** The most recent valid angles, oldest first, at most [medianWindow] of them. */
     private val recent = ArrayDeque<Double>()
+    private var currentDownMinDegrees: Double? = null
 
     /** Where in the cycle the arm is. [Phase.WAITING] until it has first been straight. */
     enum class Phase { WAITING, UP, DOWN }
@@ -80,6 +81,7 @@ class PushupRepDetector(
         val to: Phase,
         val smoothedDegrees: Double,
         val repCompleted: Boolean,
+        val bottomDegrees: Double? = null,
     )
 
     /** Reps counted so far. */
@@ -114,6 +116,10 @@ class PushupRepDetector(
             }
         smoothedDegrees = smoothed
 
+        if (phase == Phase.DOWN) {
+            currentDownMinDegrees = minOf(currentDownMinDegrees ?: smoothed, smoothed)
+        }
+
         val from = phase
         val to =
             when (from) {
@@ -126,7 +132,13 @@ class PushupRepDetector(
         phase = to
         val repCompleted = from == Phase.DOWN && to == Phase.UP
         if (repCompleted) count++
-        return Transition(from, to, smoothed, repCompleted)
+
+        if (to == Phase.DOWN) currentDownMinDegrees = smoothed
+
+        val bottomDegrees = if (repCompleted) currentDownMinDegrees else null
+        if (repCompleted) currentDownMinDegrees = null
+
+        return Transition(from, to, smoothed, repCompleted, bottomDegrees)
     }
 
     /** Back to zero reps and waiting for a straight arm. Used between sets and on a camera change. */
@@ -135,6 +147,7 @@ class PushupRepDetector(
         phase = Phase.WAITING
         smoothedDegrees = null
         recent.clear()
+        currentDownMinDegrees = null
     }
 
     companion object {

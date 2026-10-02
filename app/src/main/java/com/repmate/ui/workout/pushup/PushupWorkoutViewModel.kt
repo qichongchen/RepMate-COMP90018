@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 /** Which camera the workout reads. Rear is the default: the phone is propped up and faces the user's side. */
 enum class CameraFacing {
@@ -159,6 +160,7 @@ class PushupWorkoutViewModel
         val workoutFinished = _workoutFinished.receiveAsFlow()
 
         private val scoredReps = mutableListOf<RepScore>()
+        private var bestBottomDegrees: Double? = null
         private var lastRepAtElapsedMs: Long = SystemClock.elapsedRealtime()
 
         private var timerJob: Job? = null
@@ -183,7 +185,7 @@ class PushupWorkoutViewModel
             if (result.status != _uiState.value.status) {
                 Log.i(TAG, "counting status: ${_uiState.value.status} -> ${result.status}")
             }
-            if (result.repCompleted) onRepCompleted()
+            if (result.repCompleted) onRepCompleted(result.repBottomDegrees)
 
             _uiState.update {
                 it.copy(
@@ -256,31 +258,73 @@ class PushupWorkoutViewModel
             )
         }
 
-        private fun onRepCompleted() {
-            val now = SystemClock.elapsedRealtime()
-            val tempoSeconds = (now - lastRepAtElapsedMs) / 1000f
-            lastRepAtElapsedMs = now
+    private fun onRepCompleted(bottomDegrees: Double?) {
+        val now = SystemClock.elapsedRealtime()
+        val tempoSeconds = (now - lastRepAtElapsedMs) / 1000f
+        lastRepAtElapsedMs = now
 
-            // No calibration profile exists for push-ups yet (calibration is skipped entirely --
-            // see this class's KDoc), so there is nothing to score depth or tempo against. A
-            // counted rep is a real rep -- the state machine only reaches here on a genuine
-            // straight-bent-straight cycle -- it just isn't graded yet.
-            val score =
-                RepScore(
-                    repIndex = scoredReps.size,
-                    score = 10f,
-                    tempoSeconds = tempoSeconds,
-                    rangePercent = 100,
-                    pauseSeconds = 0f,
-                    reasons = listOf("not scored: push-ups skip calibration for now"),
-                )
-            scoredReps += score
-            Log.i(TAG, "push-up rep ${scoredReps.size}: tempo %.1fs".format(tempoSeconds))
-            // Deliberately independent of the camera in use: the rear camera leaves the user
-            // looking away from the screen, the front camera leaves them looking at it, and either
-            // way the buzz and spoken count are the user's settings, not something the camera chooses.
-            repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
+        val reasons = mutableListOf<String>()
+        var score = MAX_SCORE
+        val rangePercent: Int
+
+        val best = bestBottomDegrees
+        if (bottomDegrees == null) {
+            rangePercent = NOT_MEASURABLE_RANGE_PERCENT
+            reasons += "depth not measurable for this rep"
+        } else if (best == null) {
+            rangePercent = 100
+            reasons += "good depth"
+            bestBottomDegrees = bottomDegrees
+        } else {
+            val depthRatio = (UP_DEGREES - bottomDegrees) / (UP_DEGREES - best)
+            rangePercent = (depthRatio * 100).roundToInt().coerceIn(0, 100)
+            if (depthRatio < 1.0) {
+                val shortfall = (1.0 - depthRatio).coerceIn(0.0, 1.0)
+                score -= (shortfall * DEPTH_WEIGHT).toFloat()
+                reasons += "not as deep as your best rep this session"
+            } else {
+                reasons += "good depth"
+            }
+            bestBottomDegrees = minOf(best, bottomDegrees)
         }
+
+        val tempoMs = (tempoSeconds * 1000).toLong()
+        when {
+            tempoMs < FALLBACK_SHORTEST_MS -> {
+                val shortfall = ((FALLBACK_SHORTEST_MS - tempoMs).toFloat() / FALLBACK_SHORTEST_MS).coerceIn(0f, 1f)
+                score -= shortfall * TEMPO_WEIGHT
+                reasons += "rushed"
+            }
+            tempoMs > FALLBACK_LONGEST_MS -> {
+                val excess = ((tempoMs - FALLBACK_LONGEST_MS).toFloat() / FALLBACK_LONGEST_MS).coerceIn(0f, 1f)
+                score -= excess * TEMPO_WEIGHT
+                reasons += "slower than usual"
+            }
+            else -> reasons += "good tempo"
+        }
+
+        if (scoredReps.size >= MIN_HISTORY_FOR_CONSISTENCY && rangePercent >= 0) {
+            val pastAndCurrent = scoredReps.mapNotNull { it.rangePercent.takeIf { p -> p >= 0 } } + rangePercent
+            val meanShortfall = pastAndCurrent.map { maxOf(0, 100 - it) / 100f }.average().toFloat()
+            if (meanShortfall > CONSISTENCY_DEVIATION_THRESHOLD) {
+                score -= CONSISTENCY_WEIGHT
+                reasons += "inconsistent with your best depth this session"
+            }
+        }
+
+        val repScore =
+            RepScore(
+                repIndex = scoredReps.size,
+                score = score.coerceIn(0f, MAX_SCORE),
+                tempoSeconds = tempoSeconds,
+                rangePercent = rangePercent,
+                pauseSeconds = 0f,
+                reasons = reasons,
+            )
+        scoredReps += repScore
+        Log.i(TAG, "push-up rep ${scoredReps.size}: tempo %.1fs, range $rangePercent".format(tempoSeconds))
+        repFeedback.onRepDetected(scoredReps.size, hapticFeedbackEnabled.value, spokenRepCountEnabled.value)
+    }
 
         /** Persists the buzz-on-rep setting -- the same one Profile's toggle writes, not a per-session override. */
         fun onHapticFeedbackToggled(enabled: Boolean) {
@@ -321,6 +365,7 @@ class PushupWorkoutViewModel
         fun onResetClicked() {
             frameProcessor.reset()
             scoredReps.clear()
+            bestBottomDegrees = null
             lastRepAtElapsedMs = SystemClock.elapsedRealtime()
             _uiState.update {
                 PushupWorkoutUiState(
@@ -386,5 +431,15 @@ class PushupWorkoutViewModel
 
             /** How often the motion level is written to logcat, for tuning the limits. */
             const val MOTION_LOG_INTERVAL_MS = 1_000L
+            const val MAX_SCORE = 10f
+            const val UP_DEGREES = PushupRepDetector.DEFAULT_UP_DEGREES
+            const val DEPTH_WEIGHT = 4f
+            const val TEMPO_WEIGHT = 3f
+            const val CONSISTENCY_WEIGHT = 1.5f
+            const val FALLBACK_SHORTEST_MS = 1200L
+            const val FALLBACK_LONGEST_MS = 3500L
+            const val CONSISTENCY_DEVIATION_THRESHOLD = 0.35f
+            const val MIN_HISTORY_FOR_CONSISTENCY = 2
+            const val NOT_MEASURABLE_RANGE_PERCENT = -1
         }
     }

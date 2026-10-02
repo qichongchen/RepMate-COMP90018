@@ -123,6 +123,7 @@ fun ProfileScreen(
     onCreateAccountClick: () -> Unit,
     onSwitchToExistingAccount: () -> Unit,
     onEditDisplayNameClick: () -> Unit,
+    onFriendsClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -169,6 +170,7 @@ fun ProfileScreen(
         onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
         onRecalibrateClick = onRecalibrateClick,
+        onFriendsClick = onFriendsClick,
         onSafetyCheckInToggled = { turningOn ->
             if (turningOn) {
                 showDisclaimer = true
@@ -282,6 +284,7 @@ private fun ProfileContent(
     onSpokenRepCountToggled: (Boolean) -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
     onRecalibrateClick: () -> Unit,
+    onFriendsClick: () -> Unit,
     onSafetyCheckInToggled: (Boolean) -> Unit = {},
     onEmergencyContactClick: () -> Unit = {},
     onHowExercisesWorkClick: () -> Unit = {},
@@ -350,12 +353,12 @@ private fun ProfileContent(
                 SettingsNavigationRow(label = "Display name", value = uiState.name, onClick = onDisplayNameClick)
                 SettingsDivider()
             }
-            SettingsNavigationRow(label = "Friends")
+            SettingsNavigationRow(label = "Friends", onClick = onFriendsClick)
         }
 
-        // Outside every card and full width, so the one destructive/committal action is not
-        // mistaken for a settings row. A guest gets "Create account" here instead of "Sign out":
-        // signing out of an anonymous account would discard it for good.
+// Outside every card and full width, so the one destructive/committal action is not
+// mistaken for a settings row. A guest gets "Create account" here instead of "Sign out":
+// signing out of an anonymous account would discard it for good.
         if (uiState.isGuest) {
             RepMateButton(text = "Create account", onClick = onCreateAccountClicked)
             // Ghost, under the solid primary action: a returning user's route to their real account.
@@ -367,6 +370,7 @@ private fun ProfileContent(
         } else {
             SignOutButton(onClick = onSignOutClicked)
         }
+
     }
 }
 
@@ -768,6 +772,7 @@ private fun ProfilePreviewBody(uiState: ProfileUiState) {
         onSpokenRepCountToggled = {},
         onDarkThemeToggled = {},
         onRecalibrateClick = {},
+        onFriendsClick = {},
     )
 }
 

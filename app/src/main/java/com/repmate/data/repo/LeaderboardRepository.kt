@@ -10,4 +10,6 @@ data class LeaderboardEntry(
 
 interface LeaderboardRepository {
     fun topPlayers(limit: Int): Flow<List<LeaderboardEntry>>
+
+    fun friendsLeaderboard(friendUserIds: List<String>): Flow<List<LeaderboardEntry>>
 }
