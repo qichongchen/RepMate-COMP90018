@@ -67,9 +67,8 @@ import java.util.Locale
  * @param onStartWorkoutClick invoked with the selected exercise when "Start Workout to Beat It"
  *   is tapped; the caller (`NavGraph.kt`) routes this through the same calibration-gated flow
  *   Home's exercise chips use, not a second copy of that branching.
- * @param onAddFriendClick invoked by the empty state's "Go to Profile" button.
- *   // TODO: once a real friends-management screen exists (Jasper's work), point this at that
- *   // screen instead of Profile, and wire Profile's own "Friends" row the same way.
+ * @param onAddFriendClick invoked by the empty state's "Add friends" button; the caller
+ *   (`NavGraph.kt`) opens the Friends screen.
  */
 @Composable
 fun GhostDuelScreen(
@@ -193,8 +192,8 @@ private fun GhostDuelTopBar(
 }
 
 /**
- * No friends yet. Uses the shared [EmptyState]; the action is labelled "Go to Profile" because that
- * is where it goes (see `onAddFriendClick` in `NavGraph.kt`), and Profile is where Friends lives.
+ * No friends yet. Uses the shared [EmptyState]; the action is labelled "Add friends" because it
+ * opens the Friends screen (see `onAddFriendClick` in `NavGraph.kt`).
  * The horizontal padding is applied here because this screen, unlike History, does not pad its
  * whole body.
  */
@@ -206,7 +205,7 @@ private fun EmptyFriendsBody(
     EmptyState(
         title = "No friends yet",
         message = "Add a friend to start a Ghost Duel.",
-        actionLabel = "Go to Profile",
+        actionLabel = "Add friends",
         onAction = onAddFriendClick,
         modifier = modifier.padding(horizontal = 24.dp),
     )

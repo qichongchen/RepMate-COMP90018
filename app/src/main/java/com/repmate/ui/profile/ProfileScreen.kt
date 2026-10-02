@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -50,13 +51,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.engine.ExerciseType
 import com.repmate.safety.CheckInScheduler
+import com.repmate.ui.auth.SwitchAccountDialog
 import com.repmate.ui.components.RepMateButton
+import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.theme.RepMateTheme
 import com.repmate.ui.tutorial.ExerciseTutorialDialog
@@ -79,7 +83,9 @@ import java.util.Locale
  * a confirmation dialog. For a guest (anonymous account, [ProfileUiState.isGuest]) it is replaced
  * by "Create account": signing out of an anonymous account discards it and everything saved to
  * it, so a guest is offered an upgrade instead, which keeps the same account (see
- * `AuthViewModel.onCreateAccountClicked`). The header is refreshed each time this screen enters
+ * `AuthViewModel.onCreateAccountClicked`). Under it, "I already have an account" lets a returning
+ * user reach their real account: it asks for confirmation via [SwitchAccountDialog] (their guest
+ * workouts will be added to that account) and only then opens Log in (on top of Welcome), without signing the guest out. The header is refreshed each time this screen enters
  * composition so it reflects an upgrade made on the Sign up screen.
  *
  * ## Safety check-in
@@ -100,6 +106,11 @@ import java.util.Locale
  *   back to Welcome with a cleared back stack -- this screen doesn't know about routes at all.
  * @param onCreateAccountClick invoked when a guest taps "Create account"; the caller navigates to
  *   Sign up in upgrade mode.
+ * @param onSwitchToExistingAccount invoked when a guest confirms [SwitchAccountDialog] after tapping
+ *   "I already have an account"; the caller navigates to Log in on top of Welcome. Nothing
+ *   is signed out here or by the caller: the guest stays the current user until a log-in succeeds.
+ * @param onEditDisplayNameClick invoked when a real account taps the "Display name" row; the caller
+ *   opens the choose-name screen in rename mode. Guests don't see the row.
  * @param onRecalibrateClick invoked when the "Recalibrate" row is tapped. Takes no exercise type:
  *   this screen has no notion of "the current exercise" the way Home's chips do, so the caller
  *   (`NavGraph.kt`) is the one that shows an exercise picker and decides where to navigate once
@@ -110,6 +121,8 @@ fun ProfileScreen(
     onSignedOut: () -> Unit,
     onRecalibrateClick: () -> Unit,
     onCreateAccountClick: () -> Unit,
+    onSwitchToExistingAccount: () -> Unit,
+    onEditDisplayNameClick: () -> Unit,
     onFriendsClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
@@ -122,6 +135,7 @@ fun ProfileScreen(
     var showTutorialPicker by remember { mutableStateOf(false) }
     var tutorialExercise by remember { mutableStateOf<ExerciseType?>(null) }
     var showSignOutConfirmation by remember { mutableStateOf(false) }
+    var showSwitchAccountDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -150,6 +164,8 @@ fun ProfileScreen(
         uiState = uiState,
         onSignOutClicked = { showSignOutConfirmation = true },
         onCreateAccountClicked = onCreateAccountClick,
+        onHaveAccountClicked = { showSwitchAccountDialog = true },
+        onDisplayNameClick = onEditDisplayNameClick,
         onHapticFeedbackToggled = viewModel::onHapticFeedbackToggled,
         onSpokenRepCountToggled = viewModel::onSpokenRepCountToggled,
         onDarkThemeToggled = viewModel::onDarkThemeToggled,
@@ -174,6 +190,16 @@ fun ProfileScreen(
                 viewModel.onSignOutClicked()
             },
             onDismiss = { showSignOutConfirmation = false },
+        )
+    }
+
+    if (showSwitchAccountDialog) {
+        SwitchAccountDialog(
+            onConfirm = {
+                showSwitchAccountDialog = false
+                onSwitchToExistingAccount()
+            },
+            onDismiss = { showSwitchAccountDialog = false },
         )
     }
 
@@ -252,6 +278,8 @@ private fun ProfileContent(
     uiState: ProfileUiState,
     onSignOutClicked: () -> Unit,
     onCreateAccountClicked: () -> Unit,
+    onHaveAccountClicked: () -> Unit,
+    onDisplayNameClick: () -> Unit = {},
     onHapticFeedbackToggled: (Boolean) -> Unit,
     onSpokenRepCountToggled: (Boolean) -> Unit,
     onDarkThemeToggled: (Boolean) -> Unit,
@@ -320,19 +348,24 @@ private fun ProfileContent(
         }
 
         SettingsSection(label = "account") {
-            SettingsNavigationRow(
-                label = "Friends",
-                onClick = onFriendsClick,
-            )
+            // A guest has no name to change (they show as "Guest" and never claim one).
+            if (!uiState.isGuest) {
+                SettingsNavigationRow(label = "Display name", value = uiState.name, onClick = onDisplayNameClick)
+                SettingsDivider()
+            }
+            SettingsNavigationRow(label = "Friends", onClick = onFriendsClick)
         }
 
 // Outside every card and full width, so the one destructive/committal action is not
 // mistaken for a settings row. A guest gets "Create account" here instead of "Sign out":
 // signing out of an anonymous account would discard it for good.
         if (uiState.isGuest) {
+            RepMateButton(text = "Create account", onClick = onCreateAccountClicked)
+            // Ghost, under the solid primary action: a returning user's route to their real account.
             RepMateButton(
-                text = "Create account",
-                onClick = onCreateAccountClicked
+                text = "I already have an account",
+                onClick = onHaveAccountClicked,
+                variant = RepMateButtonVariant.Ghost,
             )
         } else {
             SignOutButton(onClick = onSignOutClicked)
@@ -563,6 +596,7 @@ private fun SettingsNavigationRow(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     showChevron: Boolean = true,
+    value: String? = null,
 ) {
     Row(
         modifier =
@@ -583,12 +617,24 @@ private fun SettingsNavigationRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        if (showChevron) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (value != null) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 180.dp),
+                )
+            }
+            if (showChevron) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -721,6 +767,7 @@ private fun ProfilePreviewBody(uiState: ProfileUiState) {
         uiState = uiState,
         onSignOutClicked = {},
         onCreateAccountClicked = {},
+        onHaveAccountClicked = {},
         onHapticFeedbackToggled = {},
         onSpokenRepCountToggled = {},
         onDarkThemeToggled = {},

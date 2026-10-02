@@ -72,6 +72,24 @@ interface SessionDao {
         exercise: String
     ): BestSessionResult?
 
+    /** Every session stored under [ownerId], oldest first. Used to read a replaced guest's history. */
+    @Query("SELECT * FROM workout_sessions WHERE ownerId = :ownerId ORDER BY startedAt ASC")
+    suspend fun getSessionsByOwner(ownerId: String): List<WorkoutSessionEntity>
+
+    /**
+     * Hands sessions from one owner to another by rewriting only `ownerId`. Keyed on both the id
+     * and the old owner, so it can only move rows still owned by [oldOwnerId] and is a no-op when
+     * repeated. The rep rows reference the session id, which is unchanged, so they are untouched.
+     *
+     * @return the number of sessions actually moved.
+     */
+    @Query("UPDATE workout_sessions SET ownerId = :newOwnerId WHERE id IN (:ids) AND ownerId = :oldOwnerId")
+    suspend fun reassignOwner(
+        ids: List<String>,
+        oldOwnerId: String,
+        newOwnerId: String
+    ): Int
+
     @Query("DELETE FROM rep_scores WHERE sessionId = :sessionId")
     suspend fun deleteRepScores(sessionId: String)
 

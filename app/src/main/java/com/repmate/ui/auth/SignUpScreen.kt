@@ -16,6 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -48,6 +51,9 @@ import kotlinx.coroutines.launch
  *   the guest's existing account instead of making a new one (see [AuthViewModel]), the copy says
  *   so, and the "Log in" link is hidden -- logging in to another account would abandon the
  *   guest's data. What happens on success is the caller's call, as always.
+ * @param onSwitchToLogIn upgrade mode only: invoked after the guest confirms [SwitchAccountDialog],
+ *   reached from the "Log in instead" action on an "account already exists" error. This is the
+ *   deliberate way to reach Log in from upgrade mode, since the bottom link stays hidden.
  */
 @Composable
 fun SignUpScreen(
@@ -56,9 +62,11 @@ fun SignUpScreen(
     onLogInClick: () -> Unit,
     modifier: Modifier = Modifier,
     upgrade: Boolean = false,
+    onSwitchToLogIn: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showSwitchAccountDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -90,8 +98,19 @@ fun SignUpScreen(
         },
         onLogInClick = onLogInClick,
         upgrade = upgrade,
+        onLogInInsteadClick = { showSwitchAccountDialog = true },
         modifier = modifier,
     )
+
+    if (showSwitchAccountDialog) {
+        SwitchAccountDialog(
+            onConfirm = {
+                showSwitchAccountDialog = false
+                onSwitchToLogIn()
+            },
+            onDismiss = { showSwitchAccountDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -105,6 +124,7 @@ private fun SignUpContent(
     onLogInClick: () -> Unit,
     modifier: Modifier = Modifier,
     upgrade: Boolean = false,
+    onLogInInsteadClick: () -> Unit = {},
 ) {
     // Box, not Column, is the root: LoadingOverlay is a later sibling here so it draws on top of
     // the whole screen and dims/blocks it, rather than needing its own placement logic.
@@ -156,7 +176,14 @@ private fun SignUpContent(
                 // for errors that aren't about one specific field.
                 if (uiState.generalError != null) {
                     Spacer(modifier = Modifier.height(24.dp))
-                    AuthErrorBanner(uiState.generalError)
+                    // The action is upgrade-only: the bottom "Log in" link is hidden there, and a
+                    // collision is the one time a guest has good reason to want it.
+                    val offerLogIn = upgrade && uiState.generalErrorOffersLogIn
+                    AuthErrorBanner(
+                        message = uiState.generalError,
+                        actionLabel = if (offerLogIn) "Log in instead" else null,
+                        onActionClick = if (offerLogIn) onLogInInsteadClick else null,
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))

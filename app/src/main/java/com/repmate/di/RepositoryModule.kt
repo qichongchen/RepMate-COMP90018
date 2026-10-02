@@ -9,6 +9,8 @@ import com.repmate.data.cloud.FirestoreLeaderboardRepository
 import com.repmate.data.repo.LeaderboardRepository
 import com.repmate.data.cloud.FirestoreFriendRepository
 import com.repmate.data.repo.FriendRepository
+import com.repmate.data.cloud.FirestoreUsernameRepository
+import com.repmate.data.repo.UsernameRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -42,4 +44,10 @@ abstract class RepositoryModule {
     abstract fun bindFriendRepository(
         implementation: FirestoreFriendRepository
     ): FriendRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUsernameRepository(
+        implementation: FirestoreUsernameRepository
+    ): UsernameRepository
 }

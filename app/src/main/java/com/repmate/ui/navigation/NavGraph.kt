@@ -31,6 +31,9 @@ import com.repmate.ui.auth.WelcomeScreen
 import com.repmate.ui.calibration.CalibrationScreen
 import com.repmate.ui.components.BottomNavBar
 import com.repmate.ui.components.BottomNavItem
+import com.repmate.ui.displayname.ChooseDisplayNameScreen
+import com.repmate.ui.displayname.ChooseNameMode
+import com.repmate.ui.displayname.DisplayNameGateViewModel
 import com.repmate.ui.friends.FriendsScreen
 import com.repmate.ui.ghostduel.GhostDuelScreen
 import com.repmate.ui.history.HistoryScreen
@@ -76,6 +79,12 @@ object RepMateDestinations {
     const val SIGNUP = "signup"
     const val LOGIN = "login"
     const val ONBOARDING = "onboarding"
+
+    /**
+     * Bare route for the choose-display-name screen, which opens in gate mode (the argument's
+     * default). Used by [afterAuth] and by `popUpTo`. The registered pattern is [CHOOSE_DISPLAY_NAME_PATTERN].
+     */
+    const val CHOOSE_DISPLAY_NAME = "choose_display_name"
     const val HOME = "home"
     const val HISTORY = "history"
     const val LEADERBOARD = "leaderboard"
@@ -92,6 +101,10 @@ object RepMateDestinations {
     const val ARG_EMAIL = "email"
     const val ARG_UPGRADE = "upgrade"
     const val ARG_POST_WORKOUT = "postWorkout"
+    const val ARG_NAME_MODE = "mode"
+
+    /** Choose-display-name's registered route: `mode` is an optional [ChooseNameMode] name, defaulting to the gate. */
+    const val CHOOSE_DISPLAY_NAME_PATTERN = "$CHOOSE_DISPLAY_NAME?$ARG_NAME_MODE={$ARG_NAME_MODE}"
 
     /**
      * Sign up's registered route: `upgrade` is an optional query param defaulting to false, so the
@@ -152,6 +165,9 @@ object RepMateDestinations {
         postWorkout: Boolean = false,
     ) = "session_detail/$sessionId" + if (postWorkout) "?$ARG_POST_WORKOUT=true" else ""
 
+    /** Choose display name in the given [mode] (gate is the bare [CHOOSE_DISPLAY_NAME]). */
+    fun chooseDisplayName(mode: ChooseNameMode): String = "$CHOOSE_DISPLAY_NAME?$ARG_NAME_MODE=${mode.name}"
+
     /** Sign up in guest-upgrade mode: links the new credentials to the current anonymous account. */
     fun signupUpgrade(): String = "$SIGNUP?$ARG_UPGRADE=true"
 
@@ -163,11 +179,21 @@ object RepMateDestinations {
         }
 
     /**
-     * Where a signed-in user goes: Home if they have already been through onboarding, else
-     * Onboarding. The single home of that rule, used both after a sign-in (see
+     * Where a signed-in user goes: first Choose display name if they are a real account without a
+     * claimed name ([needsDisplayName]), else Home if they have already been through onboarding,
+     * else Onboarding. The single home of that rule, used both after a sign-in (see
      * `navigateAfterAuthSuccess`) and at launch for a restored session (see `StartupViewModel`).
+     * Leaving the gate calls this again with `needsDisplayName = false`.
      */
-    fun afterAuth(hasSeenOnboarding: Boolean): String = if (hasSeenOnboarding) HOME else ONBOARDING
+    fun afterAuth(
+        hasSeenOnboarding: Boolean,
+        needsDisplayName: Boolean = false,
+    ): String =
+        when {
+            needsDisplayName -> CHOOSE_DISPLAY_NAME
+            hasSeenOnboarding -> HOME
+            else -> ONBOARDING
+        }
 
     /** The destinations [BottomNavBar] switches between -- these are shown with the bar visible. */
     val BOTTOM_NAV_ROUTES = setOf(HOME, HISTORY, LEADERBOARD, PROFILE)
@@ -229,6 +255,8 @@ fun RepMateNavGraph(
     // one screen -- it's used identically by all three "just authenticated" success callbacks
     // below, not owned by any single one of them.
     val onboardingGateViewModel: OnboardingGateViewModel = hiltViewModel()
+    // Same reasoning: the display-name gate is asked by navigateAfterAuthSuccess, not owned by a screen.
+    val displayNameGateViewModel: DisplayNameGateViewModel = hiltViewModel()
     // Same reasoning as onboardingGateViewModel above: one instance, used by both Home's
     // exercise-chip tap and live_workout's own entry check, rather than each owning a separate
     // "is this exercise calibrated" mechanism.
@@ -274,6 +302,34 @@ fun RepMateNavGraph(
         }
     }
 
+    // Makes Welcome the only entry on the back stack. Used by sign-out, and as the first step of
+    // switchToExistingAccount below; it signs nobody out itself (sign-out does that before calling it).
+    // Numeric popUpTo(0), not popUpTo(RepMateDestinations.WELCOME): by the time a user reaches
+    // Profile, Welcome has typically already been popped off the back stack by
+    // navigateAfterAuthSuccess below (or was never on it, for a user launched straight into Home),
+    // so a route-based popUpTo targeting it would find nothing to pop. popUpTo(0) clears the entire
+    // back stack regardless of what's on it, so nobody can navigate back into an authenticated
+    // screen, and it leaves Welcome as the root that navigateAfterAuthSuccess's own
+    // popUpTo(WELCOME) { inclusive } relies on.
+    val resetToWelcome: () -> Unit = {
+        navController.navigate(RepMateDestinations.WELCOME) {
+            popUpTo(0) { inclusive = true }
+        }
+    }
+
+    // Shared by both ways a guest can choose to log in to an existing account ("I already have an
+    // account" on Profile, "Log in instead" on the upgrade Sign up screen), after they confirm
+    // SwitchAccountDialog. Resets to Welcome first and then puts Log in on top of it, so:
+    //  - back from Log in lands on Welcome, and back from Welcome exits the app (it is the root);
+    //  - navigateAfterAuthSuccess's popUpTo(WELCOME) { inclusive } clears Welcome *and* Log in.
+    // NOTE: not a bare navigate(LOGIN): a guest who launched into Home has no Welcome on the stack,
+    // so there would be nothing for that pop to find. The guest is deliberately not signed out here;
+    // they stay the current user until a log-in actually succeeds.
+    val switchToExistingAccount: () -> Unit = {
+        resetToWelcome()
+        navController.navigate(RepMateDestinations.LOGIN)
+    }
+
     // The one place that decides "onboarding or home" after sign-up, log-in, or guest sign-in
     // all succeed -- so none of the three hardcodes a destination the way LogIn used to
     // (unconditionally HOME, which was wrong for a first-time log-in on a new device) or SignUp
@@ -281,7 +337,10 @@ fun RepMateNavGraph(
     val navigateAfterAuthSuccess: () -> Unit = {
         coroutineScope.launch {
             val destination =
-                RepMateDestinations.afterAuth(onboardingGateViewModel.hasCurrentUserSeenOnboarding())
+                RepMateDestinations.afterAuth(
+                    hasSeenOnboarding = onboardingGateViewModel.hasCurrentUserSeenOnboarding(),
+                    needsDisplayName = displayNameGateViewModel.needsDisplayName(),
+                )
             navController.navigate(destination) {
                 // Only ever called from Welcome / Sign up / Log in, which are reached only in the
                 // signed-out flow (start destination Welcome, or Profile's sign-out), so Welcome is
@@ -310,26 +369,32 @@ fun RepMateNavGraph(
         }
     }
 
-    // Shared by the bottom bar and any in-screen shortcut to a tab (e.g. History's empty state
-    // sending the user to Home, or the post-workout summary's "Done"), so all switch tabs
-    // identically: the tab highlights correctly and the back stack doesn't grow.
+    // Shared by the bottom bar and every in-screen shortcut to a tab (Home's avatar, Ghost Duel's
+    // "add friend", History's empty state), so all switch tabs identically: the tab highlights
+    // correctly and the back stack stays at most [Home, <tab>], so back from any tab reaches Home
+    // and back from Home exits the app.
+    // NOTE: pops to HOME, not findStartDestination(). The graph's start destination is fixed at
+    // launch, so for a user who signed in this session it is Welcome, which is no longer on the back
+    // stack -- the pop would then silently do nothing. HOME is always the root of the signed-in back
+    // stack (see navigateAfterAuthSuccess and Onboarding).
+    // NOTE: no saveState / restoreState. Restoring a saved tab stack brought back the stack that had
+    // just been popped (e.g. tapping Home from Profile re-opened Profile); tabs simply start fresh.
     val navigateToBottomNavRoute: (String) -> Unit = { route ->
-        navController.navigate(route) {
-            // Standard bottom-nav behaviour: don't stack a new copy of a tab the user
-            // is already on, and restore each tab's state when they switch back to it.
-            // NOTE: pops to HOME, not findStartDestination(). The graph's start destination is
-            // fixed at launch, so for a user who signed in this session it is Welcome, which is no
-            // longer on the back stack -- the pop would then silently do nothing and a second Home
-            // would stack on top of whatever screen "Done" was pressed from. HOME is always the
-            // root of the signed-in back stack (see navigateAfterAuthSuccess and Onboarding).
-            popUpTo(RepMateDestinations.HOME) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+        // Home is already on the stack, so for the Home tab a plain pop is the most reliable way back
+        // to it: it drops everything above Home without recreating it. If the pop does nothing (already
+        // on Home, or Home isn't on the stack) fall through to the navigate below, which is a no-op
+        // on Home thanks to launchSingleTop.
+        val poppedToHome = route == RepMateDestinations.HOME && navController.popBackStack(RepMateDestinations.HOME, inclusive = false)
+        if (!poppedToHome) {
+            navController.navigate(route) {
+                popUpTo(RepMateDestinations.HOME)
+                launchSingleTop = true
+            }
         }
     }
 
     // Leaves the post-workout summary for Home. Deliberately not navigateToBottomNavRoute: that helper
-    // is for tab switching, and its navigate(HOME) { popUpTo(HOME) ...; launchSingleTop; restoreState }
+    // is for tab switching, and its navigate(HOME) { popUpTo(HOME) ...; launchSingleTop }
     // combination is unreliable when the top entry is the summary (it can leave the summary on the stack).
     // NOTE: try the plain pop first -- it removes the summary and anything above the existing Home entry
     // without recreating Home. Only if Home isn't on the stack do we reset to a single fresh Home.
@@ -394,9 +459,18 @@ fun RepMateNavGraph(
                     // and Welcome is not on the back stack: just return to Profile, which is
                     // directly beneath this screen. Refreshing its header is Profile's job.
                     onSignUpSuccess = {
-                        if (upgrade) navController.popBackStack() else navigateAfterAuthSuccess()
+                        if (upgrade) {
+                            // The account is real now but has no claimed name: choose one, then
+                            // return to Profile. Replaces Sign up so back from here is Profile.
+                            navController.navigate(RepMateDestinations.chooseDisplayName(ChooseNameMode.UPGRADE)) {
+                                popUpTo(RepMateDestinations.SIGNUP_PATTERN) { inclusive = true }
+                            }
+                        } else {
+                            navigateAfterAuthSuccess()
+                        }
                     },
                     upgrade = upgrade,
+                    onSwitchToLogIn = switchToExistingAccount,
                     onLogInClick = {
                         // Replaces this screen on the back stack rather than stacking on top of
                         // it, so back from Log in returns to Welcome, not bounces through Signup.
@@ -441,6 +515,42 @@ fun RepMateNavGraph(
                 )
             }
 
+            composable(
+                route = RepMateDestinations.CHOOSE_DISPLAY_NAME_PATTERN,
+                arguments =
+                    listOf(
+                        navArgument(RepMateDestinations.ARG_NAME_MODE) {
+                            type = NavType.StringType
+                            defaultValue = ChooseNameMode.GATE.name
+                        },
+                    ),
+            ) { backStackEntry ->
+                val mode = ChooseNameMode.fromArgument(backStackEntry.arguments?.getString(RepMateDestinations.ARG_NAME_MODE))
+                ChooseDisplayNameScreen(
+                    mode = mode,
+                    onFinished = {
+                        if (mode == ChooseNameMode.GATE) {
+                            // Onboarding (if not seen) or Home. Pops this screen itself, like
+                            // Onboarding does: it is the root of the stack, so nothing can go back to it.
+                            coroutineScope.launch {
+                                val destination =
+                                    RepMateDestinations.afterAuth(
+                                        hasSeenOnboarding = onboardingGateViewModel.hasCurrentUserSeenOnboarding(),
+                                        needsDisplayName = false,
+                                    )
+                                navController.navigate(destination) {
+                                    popUpTo(RepMateDestinations.CHOOSE_DISPLAY_NAME_PATTERN) { inclusive = true }
+                                }
+                            }
+                        } else {
+                            // Upgrade and rename both sit on top of Profile.
+                            navController.popBackStack()
+                        }
+                    },
+                    onBackClick = { navController.popBackStack() },
+                )
+            }
+
             composable(RepMateDestinations.ONBOARDING) {
                 OnboardingScreen(
                     onFinish = {
@@ -463,7 +573,7 @@ fun RepMateNavGraph(
             composable(RepMateDestinations.HOME) {
                 HomeScreen(
                     onExerciseSelected = startExercise,
-                    onProfileClick = { navController.navigate(RepMateDestinations.PROFILE) },
+                    onProfileClick = { navigateToBottomNavRoute(RepMateDestinations.PROFILE) },
                     onGhostDuelClick = { navController.navigate(RepMateDestinations.GHOST_DUEL) },
                 )
             }
@@ -471,8 +581,6 @@ fun RepMateNavGraph(
                 GhostDuelScreen(
                     onBackClick = { navController.popBackStack() },
                     onStartWorkoutClick = startExercise,
-                    // TODO: once a real friends-management screen exists (Jasper's work), point this at
-                    // that screen instead of Profile, and wire Profile's own "Friends" row the same way.
                     onAddFriendClick = { navController.navigate(RepMateDestinations.FRIENDS) },
                 )
             }
@@ -500,20 +608,12 @@ fun RepMateNavGraph(
                 var showRecalibratePicker by remember { mutableStateOf(false) }
 
                 ProfileScreen(
-                    onSignedOut = {
-                        // Numeric popUpTo(0), not popUpTo(RepMateDestinations.WELCOME): by the time a
-                        // user reaches Profile, Welcome has typically already been popped off the back
-                        // stack by navigateAfterAuthSuccess above, so a route-based popUpTo targeting it
-                        // would find nothing to pop. popUpTo(0) clears the entire back stack regardless
-                        // of what's on it, so a signed-out user can never navigate back into an
-                        // authenticated screen.
-                        navController.navigate(RepMateDestinations.WELCOME) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
+                    onSignedOut = resetToWelcome,
                     onRecalibrateClick = { showRecalibratePicker = true },
-                    onCreateAccountClick = {
-                        navController.navigate(RepMateDestinations.signupUpgrade())
+                    onCreateAccountClick = { navController.navigate(RepMateDestinations.signupUpgrade()) },
+                    onSwitchToExistingAccount = switchToExistingAccount,
+                    onEditDisplayNameClick = {
+                        navController.navigate(RepMateDestinations.chooseDisplayName(ChooseNameMode.RENAME))
                     },
                     onFriendsClick = {
                         navController.navigate(RepMateDestinations.FRIENDS)
