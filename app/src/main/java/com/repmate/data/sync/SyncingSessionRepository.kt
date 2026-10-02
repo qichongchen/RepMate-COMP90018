@@ -8,6 +8,7 @@ import com.repmate.data.repo.BestWorkoutScore
 import com.repmate.data.repo.SessionRepository
 import com.repmate.data.cloud.toRoomRepScores
 import com.repmate.data.cloud.toRoomSession
+import com.repmate.data.cloud.FirestoreGhostScoreDataSource
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,7 @@ import javax.inject.Singleton
 class SyncingSessionRepository @Inject constructor(
     private val roomRepository: RoomSessionRepository,
     private val firestoreWorkoutDataSource: FirestoreWorkoutDataSource,
+    private val firestoreGhostScoreDataSource: FirestoreGhostScoreDataSource,
     private val authRepository: AuthRepository,
 ) : SessionRepository {
 
@@ -31,14 +33,27 @@ class SyncingSessionRepository @Inject constructor(
 
         // Then try to sync the completed workout to Firestore.
         // A cloud failure must not prevent the workout from finishing.
-        val result = firestoreWorkoutDataSource.upload(session)
+        val uploadResult = firestoreWorkoutDataSource.upload(session)
 
-        result.onFailure { error ->
-            Log.w(
-                TAG,
-                "Workout ${session.id} saved locally but Firestore sync failed",
-                error
-            )
+        if (uploadResult.isSuccess) {
+            val publishResult =
+                firestoreGhostScoreDataSource.publishBestScore(session)
+
+            publishResult.onFailure { error ->
+                Log.w(
+                    TAG,
+                    "Workout ${session.id} synced but Ghost Duel score publish failed",
+                    error
+                )
+            }
+        } else {
+            uploadResult.exceptionOrNull()?.let { error ->
+                Log.w(
+                    TAG,
+                    "Workout ${session.id} saved locally but Firestore sync failed",
+                    error
+                )
+            }
         }
     }
 
