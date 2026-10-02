@@ -14,10 +14,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.repmate.data.repo.FriendRepository
+import com.repmate.data.repo.observeFriends
 
+
+
+enum class LeaderboardType {
+    FRIENDS,
+    GLOBAL,
+}
 data class LeaderboardUiState(
     val entries: List<LeaderboardEntry> = emptyList(),
-    /** True when the query failed; [entries] is then empty. */
+    val selectedType: LeaderboardType = LeaderboardType.FRIENDS,
     val isUnavailable: Boolean = false,
 )
 
@@ -32,16 +39,45 @@ class LeaderboardViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            leaderboardRepository.observeTop(20).collect { load ->
-                _uiState.value =
-                    when (load) {
-                        is LeaderboardLoad.Loaded -> LeaderboardUiState(entries = load.entries)
-                        is LeaderboardLoad.Failed -> {
-                            Log.w("RepMateLeaderboard", "leaderboard unavailable on Leaderboard screen", load.cause)
-                            LeaderboardUiState(isUnavailable = true)
-                        }
+            friendRepository.observeFriends().collect { friends ->
+                val friendUserIds = friends.map { it.userId }
+
+                leaderboardRepository
+                    .observeFriends(friendUserIds)
+                    .collect { load ->
+                        _uiState.value =
+                            when (load) {
+                                is LeaderboardLoad.Loaded -> {
+                                    _uiState.value.copy(
+                                        entries = load.entries,
+                                        isUnavailable = false,
+                                    )
+                                }
+
+                                is LeaderboardLoad.Failed -> {
+                                    Log.w(
+                                        "RepMateLeaderboard",
+                                        "friends leaderboard unavailable",
+                                        load.cause
+                                    )
+
+                                    _uiState.value.copy(
+                                        entries = emptyList(),
+                                        isUnavailable = true,
+                                    )
+                                }
+                            }
                     }
             }
         }
+    }
+
+    fun selectLeaderboard(type: LeaderboardType) {
+        if (_uiState.value.selectedType == type) return
+
+        _uiState.value = _uiState.value.copy(
+            selectedType = type,
+            isUnavailable = false,
+        )
     }
 }
