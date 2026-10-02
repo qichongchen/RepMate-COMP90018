@@ -35,11 +35,10 @@ fun ExerciseType.icon(): ImageVector =
     }
 
 /**
- * Whether reps of this exercise are actually graded by the form scorer. False for
- * [ExerciseType.PUSHUP] only: push-ups are counted from the camera and have no calibration
- * profile to score against, so every push-up rep is saved with a placeholder score of 10 (see
- * `PushupWorkoutViewModel`). Anything that displays or averages a rep score should check this
- * rather than present that placeholder as a real result.
+ * Whether reps of this exercise are actually graded by the form scorer. True for every exercise:
+ * push-ups now score real depth/tempo/consistency against the session's own best rep (see
+ * `PushupWorkoutViewModel`) instead of saving a flat placeholder score. Kept as a property (rather
+ * than deleted outright) so a future exercise without scoring has somewhere to plug in.
  */
 val ExerciseType.hasFormScoring: Boolean
-    get() = this != ExerciseType.PUSHUP
+    get() = true

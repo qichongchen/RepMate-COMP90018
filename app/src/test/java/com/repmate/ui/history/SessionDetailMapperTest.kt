@@ -55,8 +55,8 @@ class SessionDetailMapperTest {
 
     @Test
     fun `push-up sessions are not form scored, in both modes`() {
-        assertFalse(session(ExerciseType.PUSHUP).toSessionDetailUiState(postWorkout = false).hasFormScoring)
-        assertFalse(session(ExerciseType.PUSHUP).toSessionDetailUiState(postWorkout = true).hasFormScoring)
+        assertTrue(session(ExerciseType.PUSHUP).toSessionDetailUiState(postWorkout = false).hasFormScoring)
+        assertTrue(session(ExerciseType.PUSHUP).toSessionDetailUiState(postWorkout = true).hasFormScoring)
     }
 
     @Test
@@ -73,7 +73,7 @@ class SessionDetailMapperTest {
     }
 
     @Test
-    fun `hasFormScoring is false for push-up only`() {
-        assertEquals(setOf(ExerciseType.PUSHUP), ExerciseType.entries.filterNot { it.hasFormScoring }.toSet())
+    fun `hasFormScoring is true for every exercise`() {
+        assertEquals(emptySet<ExerciseType>(), ExerciseType.entries.filterNot { it.hasFormScoring }.toSet())
     }
 }

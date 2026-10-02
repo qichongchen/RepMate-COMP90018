@@ -63,6 +63,15 @@ constructor(
     private val _uiState = MutableStateFlow(buildInitialUiState(firebaseAuth))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    /**
+     * Re-reads the avatar initial. Home stays in the back stack under Profile and the choose-name
+     * screen, so this ViewModel outlives a rename or a guest upgrade; without a refresh on
+     * re-entry the avatar would keep the old name's first letter.
+     */
+    fun refreshAccount() {
+        _uiState.update { it.copy(avatarInitial = accountDisplayFor(firebaseAuth).avatarInitial) }
+    }
+
     init {
         viewModelScope.launch {
             sessionRepository.recent(limit = 1).collect { sessions ->

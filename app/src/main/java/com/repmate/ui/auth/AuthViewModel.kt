@@ -13,6 +13,8 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.repmate.data.cloud.FirestoreUserProfileDataSource
+import com.repmate.data.repo.UsernameRepository
+import com.repmate.data.sync.GuestMigrationLauncher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +44,12 @@ data class AuthFormUiState(
     val isEmailLoading: Boolean = false,
     val isGoogleLoading: Boolean = false,
     val generalError: String? = null,
+    /**
+     * True when [generalError] is a guest-upgrade collision (the email or Google account already
+     * belongs to someone else). The upgrade-mode sign-up screen uses it to offer "Log in instead";
+     * always false when [generalError] is null.
+     */
+    val generalErrorOffersLogIn: Boolean = false,
 ) {
     /** True while either auth path is in flight -- both buttons disable together so a user can't fire both at once. */
     val isBusy: Boolean get() = isEmailLoading || isGoogleLoading
@@ -65,6 +73,8 @@ class AuthViewModel
     constructor(
         private val firebaseAuth: FirebaseAuth,
         private val userProfileDataSource: FirestoreUserProfileDataSource,
+        private val guestMigration: GuestMigrationLauncher,
+        private val usernameRepository: UsernameRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AuthFormUiState())
         val uiState: StateFlow<AuthFormUiState> = _uiState.asStateFlow()
@@ -82,11 +92,11 @@ class AuthViewModel
         val authSucceeded = _authSucceeded.receiveAsFlow()
 
         fun onEmailChanged(value: String) {
-            _uiState.update { it.copy(email = value, emailError = null, generalError = null) }
+            _uiState.update { it.copy(email = value, emailError = null, generalError = null, generalErrorOffersLogIn = false) }
         }
 
         fun onPasswordChanged(value: String) {
-            _uiState.update { it.copy(password = value, passwordError = null, generalError = null) }
+            _uiState.update { it.copy(password = value, passwordError = null, generalError = null, generalErrorOffersLogIn = false) }
         }
 
         /**
@@ -116,7 +126,7 @@ class AuthViewModel
                 return
             }
 
-            _uiState.update { it.copy(isEmailLoading = true, generalError = null) }
+            _uiState.update { it.copy(isEmailLoading = true, generalError = null, generalErrorOffersLogIn = false) }
             viewModelScope.launch {
                 val guest = currentGuest()
                 try {
@@ -135,6 +145,7 @@ class AuthViewModel
                         } else {
                             "An account with this email already exists."
                         },
+                        offersLogIn = guest != null,
                     )
                 } catch (e: FirebaseAuthWeakPasswordException) {
                     failEmail(e.reason ?: "That password is too weak.")
@@ -162,22 +173,33 @@ class AuthViewModel
                 return
             }
 
-            _uiState.update { it.copy(isEmailLoading = true, generalError = null) }
+            _uiState.update { it.copy(isEmailLoading = true, generalError = null, generalErrorOffersLogIn = false) }
             viewModelScope.launch {
+                // A guest logging in is *replaced* by that account (no link), so their UID has to be
+                // captured before the call -- afterwards it is gone. See GuestHistoryMigrator.
+                val guestUid = currentGuest()?.uid
                 try {
+                    if (guestUid != null) guestMigration.markGuestPending(guestUid)
                     firebaseAuth.signInWithEmailAndPassword(state.email, state.password).await()
+                    if (guestUid != null) guestMigration.onSignedIn()
                     ensureUserProfile()
+                    // A returning user's chosen name wins over whatever the provider reports.
+                    usernameRepository.syncAuthNameIfClaimed()
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthInvalidUserException) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     // Deliberately the same message as a wrong password: don't reveal whether an
                     // email is registered at all.
                     failEmail("Incorrect email or password.")
                 } catch (e: FirebaseAuthInvalidCredentialsException) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     failEmail("Incorrect email or password.")
                 } catch (e: FirebaseNetworkException) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     failEmail("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
                     failEmail("Something went wrong signing in. Please try again.")
                 }
             }
@@ -205,21 +227,35 @@ class AuthViewModel
         ) {
             viewModelScope.launch {
                 val guest = if (linkToGuest) currentGuest() else null
+                // A guest signing in without linking (Log in, or Sign up outside upgrade mode) is
+                // replaced, possibly by a different UID, so capture it first. Linking keeps the UID
+                // and needs no merge. See GuestHistoryMigrator.
+                val guestUidToMerge = if (guest == null) currentGuest()?.uid else null
                 try {
                     val credential = GoogleAuthProvider.getCredential(idToken, null)
                     if (guest != null) {
                         guest.linkWithCredential(credential).await()
                     } else {
+                        if (guestUidToMerge != null) guestMigration.markGuestPending(guestUidToMerge)
                         firebaseAuth.signInWithCredential(credential).await()
+                        if (guestUidToMerge != null) guestMigration.onSignedIn()
                     }
                     ensureUserProfile()
+                    // On a new device Google reports its own name; a name already claimed here wins.
+                    if (guest == null) usernameRepository.syncAuthNameIfClaimed()
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {
-                    failGoogle("That Google account is already registered. Use a different account to keep your guest progress.")
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
+                    failGoogle(
+                        "That Google account is already registered. Use a different account to keep your guest progress.",
+                        offersLogIn = guest != null,
+                    )
                 } catch (e: FirebaseNetworkException) {
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
                     failGoogle("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
                     failGoogle("Google sign-in failed. Please try again.")
                 }
             }
@@ -227,7 +263,7 @@ class AuthViewModel
 
         /** Credential Manager's picker is about to show; reflected as loading immediately, before any token comes back. */
         fun onGoogleSignInStarted() {
-            _uiState.update { it.copy(isGoogleLoading = true, generalError = null) }
+            _uiState.update { it.copy(isGoogleLoading = true, generalError = null, generalErrorOffersLogIn = false) }
         }
 
         /** Called when Credential Manager itself fails (not a user cancel -- that's [onGoogleSignInCancelled]). */
@@ -241,15 +277,23 @@ class AuthViewModel
         }
 
         fun dismissError() {
-            _uiState.update { it.copy(generalError = null) }
+            _uiState.update { it.copy(generalError = null, generalErrorOffersLogIn = false) }
         }
 
-        private fun failEmail(message: String) {
-            _uiState.update { it.copy(isEmailLoading = false, generalError = message) }
+        // NOTE: offersLogIn is only ever true for a guest-upgrade collision, the one failure where
+        // "log in to that account instead" is a real way forward (see AuthFormUiState).
+        private fun failEmail(
+            message: String,
+            offersLogIn: Boolean = false,
+        ) {
+            _uiState.update { it.copy(isEmailLoading = false, generalError = message, generalErrorOffersLogIn = offersLogIn) }
         }
 
-        private fun failGoogle(message: String) {
-            _uiState.update { it.copy(isGoogleLoading = false, generalError = message) }
+        private fun failGoogle(
+            message: String,
+            offersLogIn: Boolean = false,
+        ) {
+            _uiState.update { it.copy(isGoogleLoading = false, generalError = message, generalErrorOffersLogIn = offersLogIn) }
         }
 
         private fun validateNewPassword(password: String): String? =

@@ -1,5 +1,6 @@
 package com.repmate.ui.history
 
+import androidx.compose.foundation.Canvas
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +32,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -166,6 +171,20 @@ private fun SessionDetailBody(
                 )
             } else {
                 StatCard(label = "Avg score", value = NOT_SCORED_DASH, caption = NOT_SCORED_CAPTION, modifier = Modifier.weight(1f))
+            }
+        }
+
+        if (uiState.hasFormScoring && uiState.reps.size >= 2) {
+            Text(
+                text = "score trend",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            RepMateCard {
+                ScoreTrendChart(
+                    scores = uiState.reps.map { it.score },
+                    modifier = Modifier.fillMaxWidth().height(120.dp).padding(8.dp),
+                )
             }
         }
 
@@ -379,6 +398,60 @@ private fun RepRow(
     }
 }
 
+/**
+ * Each rep's score (0-10) plotted in order, so a session's form-quality trend is visible at a
+ * glance. Same "degrade gracefully instead of drawing something misleading" rule as
+ * [AccelerometerCurveChart] in MotionReplayScreen: fewer than two points can't show a trend, so
+ * that case shows a short explanatory label instead of an empty or single-dot canvas.
+ *
+ * The y-axis is a fixed 0..10 range (not auto-scaled to this session's own min/max), so the same
+ * chart reads the same way across different sessions instead of exaggerating small swings.
+ */
+@Composable
+private fun ScoreTrendChart(
+    scores: List<Float>,
+    modifier: Modifier = Modifier,
+) {
+    if (scores.size < 2) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text(
+                text = "Need at least two scored reps to draw a trend.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
+    val lineColor = MaterialTheme.colorScheme.primary
+    val axisColor = MaterialTheme.colorScheme.outlineVariant
+
+    Canvas(modifier = modifier) {
+        val valueMin = 0f
+        val valueMax = 10f
+        val valueSpan = valueMax - valueMin
+
+        fun xFor(index: Int): Float = (index.toFloat() / (scores.size - 1)) * size.width
+        fun yFor(value: Float): Float = size.height - ((value - valueMin) / valueSpan) * size.height
+
+        drawLine(axisColor, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+        drawLine(axisColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
+
+        val path =
+            Path().apply {
+                scores.forEachIndexed { index, score ->
+                    val x = xFor(index)
+                    val y = yFor(score)
+                    if (index == 0) moveTo(x, y) else lineTo(x, y)
+                }
+            }
+        drawPath(path, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+        scores.forEachIndexed { index, score ->
+            drawCircle(color = lineColor, radius = 3.dp.toPx(), center = Offset(xFor(index), yFor(score)))
+        }
+    }
+}
 private const val NOT_SCORED_DASH = "–"
 private const val NOT_SCORED_CAPTION = "not scored yet"
 

@@ -14,6 +14,13 @@ data class AccountDisplay(
     val caption: String,
 )
 
+/** Provider id Firebase reports for a Google sign-in. */
+private const val GOOGLE_PROVIDER_ID = "google.com"
+
+/** "Signed in with Google" if [providerIds] includes Google, else "Signed in with email". */
+internal fun signInCaption(providerIds: List<String>): String =
+    if (GOOGLE_PROVIDER_ID in providerIds) "Signed in with Google" else "Signed in with email"
+
 /**
  * Google sign-ups have a `displayName`; email/password sign-ups don't (that flow deliberately
  * doesn't collect a name -- see `SignUpScreen`'s NOTE on that), so this falls back to the email
@@ -28,7 +35,9 @@ fun accountDisplayFor(firebaseAuth: FirebaseAuth): AccountDisplay {
         return AccountDisplay(
             name = displayName,
             avatarInitial = displayName.first().uppercase(),
-            caption = "Signed in with Google",
+            // Judged by provider, not by "has a name": a chosen display name is set on email
+            // accounts too, and those must not claim to be signed in with Google.
+            caption = signInCaption(user.providerData.map { it.providerId }),
         )
     }
 

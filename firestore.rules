@@ -4,6 +4,83 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ---------------------------------------------------------------------------------------
+    // Unique display names.
+    //
+    // usernames/{name} is a claim ticket: the document id is the display name lowercased, so a
+    // second claim on the same id is a create on an existing document, which no rule allows
+    // (there is no update rule). That is the uniqueness guarantee. The document holds only the
+    // owner's uid and createdAt; the original-case name lives on users/{uid}.displayName, and
+    // every check about it reads that document with getAfter() so a claim and the profile update
+    // must land in the same batch/transaction.
+    // ---------------------------------------------------------------------------------------
+
+    // The display name of user `uid` as it will be once the current write commits.
+    function displayNameAfter(uid) {
+      return getAfter(/databases/$(database)/documents/users/$(uid)).data.displayName;
+    }
+
+    // True if usernames/{id} exists once the current write commits AND belongs to the caller.
+    // existsAfter() first, so a missing document is a clean false rather than an evaluation error.
+    function ownsNameAfter(id) {
+      return existsAfter(/databases/$(database)/documents/usernames/$(id))
+        && getAfter(/databases/$(database)/documents/usernames/$(id)).data.uid == request.auth.uid;
+    }
+
+    // Original text: 3-20 characters, ASCII letters/digits/underscores, single spaces only between
+    // words (no leading, trailing or double spaces).
+    // NOTE: ASCII only, on purpose, and checked on the original text rather than only on the id.
+    // If lower() were Unicode-aware, look-alikes such as the Kelvin sign (U+212A, lowercase "k")
+    // could map to an ASCII id that someone else owns. The local emulator's lower() is ASCII-only,
+    // so there this check is defence in depth; it costs nothing and does not rely on that.
+    function validDisplayName(name) {
+      return name is string
+        && name.size() >= 3
+        && name.size() <= 20
+        && name.matches('^[A-Za-z0-9_]+( [A-Za-z0-9_]+)*$');
+    }
+
+    // The document id: same shape as the name but already lowercase, and not a reserved word or a
+    // "guest..." look-alike of the anonymous accounts.
+    // NOTE: reserved words are matched whole ("admin" is refused, "admin2" is not).
+    function validUsernameId(id) {
+      return id.size() >= 3
+        && id.size() <= 20
+        && id.matches('^[a-z0-9_]+( [a-z0-9_]+)*$')
+        && !(id in ['admin', 'repmate', 'support', 'moderator'])
+        && !id.matches('^guest.*$');
+    }
+
+    // Signed in with Google or email/password, i.e. not a guest.
+    function isRealAccount() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Username claims
+    match /usernames/{username} {
+      // Any signed-in user may check whether a name is free; nobody may list them.
+      allow get: if request.auth != null;
+      allow list: if false;
+
+      allow create: if isRealAccount()
+        && request.resource.data.keys().hasOnly(["uid", "createdAt"])
+        && request.resource.data.keys().hasAll(["uid", "createdAt"])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && validUsernameId(username)
+        && validDisplayName(displayNameAfter(request.auth.uid))
+        && displayNameAfter(request.auth.uid).lower() == username;
+
+      // A name can only be released by renaming: after the write, the owner's displayName must no
+      // longer map to this id.
+      allow delete: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && displayNameAfter(request.auth.uid).lower() != username;
+
+      allow update: if false;
+    }
+
     // Leaderboard
     match /leaderboard/{userId} {
       allow read: if request.auth != null;
@@ -27,7 +104,29 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.resource.data.diff(resource.data)
           .affectedKeys().hasOnly(["displayName"])
-        && request.resource.data.displayName is string;
+        && request.resource.data.displayName is string
+        // Unchanged is always fine (e.g. claiming the name you already have). A change must be to
+        // a valid name whose usernames document belongs to the caller once the write commits, and
+        // must not leave the caller still holding the OLD name (no hoarding: a rename batch has to
+        // delete the old claim). Two ways the old name is not a problem:
+        //  - the old and new names differ only in case (same id, one document, still theirs);
+        //  - the caller does not own the old name's document after the write. That covers legacy
+        //    names that were never claimed (no document), names that are not even claimable (so
+        //    cannot have a document; also avoids building a path from arbitrary text), and a
+        //    duplicate legacy name whose document belongs to someone else. Requiring the document
+        //    to be absent outright would lock such users out of ever renaming.
+        && (
+          request.resource.data.displayName == resource.data.displayName
+          || (
+            validDisplayName(request.resource.data.displayName)
+            && ownsNameAfter(request.resource.data.displayName.lower())
+            && (
+              request.resource.data.displayName.lower() == resource.data.displayName.lower()
+              || !validDisplayName(resource.data.displayName)
+              || !ownsNameAfter(resource.data.displayName.lower())
+            )
+          )
+        );
 
       allow delete: if false;
     }

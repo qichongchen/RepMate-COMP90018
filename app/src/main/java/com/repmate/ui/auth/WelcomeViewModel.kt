@@ -30,9 +30,12 @@ data class WelcomeUiState(
  * client-side stub. Firebase's SDK persists that session on-device by default, the same as any
  * other sign-in method: a guest who reopens the app later is still signed in as that same
  * anonymous user via `firebaseAuth.currentUser`, with no code needed here to save or restore
- * that -- and deliberately none here to clear or reset it either. If `signInAnonymously()` is
- * called again while that session is still current (e.g. tapping the button a second time), the
- * SDK resolves it against the existing session rather than minting a new UID.
+ * that -- and deliberately none here to clear or reset it either.
+ *
+ * Welcome is also where a guest lands after choosing "I already have an account" on Profile, with
+ * their anonymous user still signed in (they are only replaced if a log-in succeeds). Tapping
+ * "Continue as guest" there must return to that same guest, not mint a second anonymous user and
+ * orphan the first one's workouts, so an already-anonymous current user skips the call entirely.
  *
  * Anonymous auth has none of email/password's failure modes (no collision, no weak-password, no
  * invalid-credential) -- a network failure is the only realistic way this call fails.
@@ -55,7 +58,11 @@ class WelcomeViewModel
             _uiState.update { it.copy(isGuestLoading = true, generalError = null) }
             viewModelScope.launch {
                 try {
-                    firebaseAuth.signInAnonymously().await()
+                    // NOTE: skip the call rather than rely on the SDK returning the existing guest:
+                    // it also avoids a network round trip and works offline.
+                    if (firebaseAuth.currentUser?.isAnonymous != true) {
+                        firebaseAuth.signInAnonymously().await()
+                    }
                     _uiState.update { it.copy(isGuestLoading = false) }
                     _guestSignInSucceeded.send(Unit)
                 } catch (e: FirebaseNetworkException) {
