@@ -130,8 +130,10 @@ class AuthViewModel
             viewModelScope.launch {
                 val guest = currentGuest()
                 try {
-                    if (guest != null) {
-                        guest.linkWithCredential(EmailAuthProvider.getCredential(state.email, state.password)).await()
+                    // Sign-up can always upgrade in place, so a guest here is never replaced and
+                    // never needs a merge -- see guestAuthRoute.
+                    if (guestAuthRoute(isGuest = guest != null, canLinkToGuest = true) == GuestAuthRoute.LINK_KEEPING_UID) {
+                        requireNotNull(guest).linkWithCredential(EmailAuthProvider.getCredential(state.email, state.password)).await()
                     } else {
                         firebaseAuth.createUserWithEmailAndPassword(state.email, state.password).await()
                     }
@@ -177,7 +179,10 @@ class AuthViewModel
             viewModelScope.launch {
                 // A guest logging in is *replaced* by that account (no link), so their UID has to be
                 // captured before the call -- afterwards it is gone. See GuestHistoryMigrator.
-                val guestUid = currentGuest()?.uid
+                // Log in never links, so a guest here is always replaced -- see guestAuthRoute.
+                val guestUid =
+                    currentGuest()?.uid
+                        ?.takeIf { guestAuthRoute(isGuest = true, canLinkToGuest = false) == GuestAuthRoute.REPLACE_AND_MERGE }
                 try {
                     if (guestUid != null) guestMigration.markGuestPending(guestUid)
                     firebaseAuth.signInWithEmailAndPassword(state.email, state.password).await()
@@ -188,18 +193,18 @@ class AuthViewModel
                     _uiState.update { it.copy(isEmailLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthInvalidUserException) {
-                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture(guestUid)
                     // Deliberately the same message as a wrong password: don't reveal whether an
                     // email is registered at all.
                     failEmail("Incorrect email or password.")
                 } catch (e: FirebaseAuthInvalidCredentialsException) {
-                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture(guestUid)
                     failEmail("Incorrect email or password.")
                 } catch (e: FirebaseNetworkException) {
-                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture(guestUid)
                     failEmail("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
-                    if (guestUid != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUid != null) guestMigration.discardUnresolvedCapture(guestUid)
                     failEmail("Something went wrong signing in. Please try again.")
                 }
             }
@@ -230,7 +235,12 @@ class AuthViewModel
                 // A guest signing in without linking (Log in, or Sign up outside upgrade mode) is
                 // replaced, possibly by a different UID, so capture it first. Linking keeps the UID
                 // and needs no merge. See GuestHistoryMigrator.
-                val guestUidToMerge = if (guest == null) currentGuest()?.uid else null
+                val guestUidToMerge =
+                    currentGuest()
+                        ?.uid
+                        ?.takeIf {
+                            guestAuthRoute(isGuest = true, canLinkToGuest = linkToGuest) == GuestAuthRoute.REPLACE_AND_MERGE
+                        }
                 try {
                     val credential = GoogleAuthProvider.getCredential(idToken, null)
                     if (guest != null) {
@@ -246,16 +256,16 @@ class AuthViewModel
                     _uiState.update { it.copy(isGoogleLoading = false) }
                     _authSucceeded.send(Unit)
                 } catch (e: FirebaseAuthUserCollisionException) {
-                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture(guestUidToMerge)
                     failGoogle(
                         "That Google account is already registered. Use a different account to keep your guest progress.",
                         offersLogIn = guest != null,
                     )
                 } catch (e: FirebaseNetworkException) {
-                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture(guestUidToMerge)
                     failGoogle("No internet connection. Check your network and try again.")
                 } catch (e: Exception) {
-                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture()
+                    if (guestUidToMerge != null) guestMigration.discardUnresolvedCapture(guestUidToMerge)
                     failGoogle("Google sign-in failed. Please try again.")
                 }
             }
@@ -317,4 +327,47 @@ class AuthViewModel
                 )
             }
         }
+    }
+
+/** What a sign-in does to a guest's data. */
+internal enum class GuestAuthRoute {
+    /**
+     * The credential is linked to the anonymous account, which keeps the same UID: the guest's
+     * Room rows and cloud documents are already the account's, so there is nothing to migrate and
+     * no window in which anything could be lost.
+     */
+    LINK_KEEPING_UID,
+
+    /**
+     * The sign-in replaces the guest with a different UID, so the guest's UID has to be captured
+     * before the call and their Room history merged afterwards.
+     */
+    REPLACE_AND_MERGE,
+
+    /** Nobody was signed in as a guest, so the merge machinery is not involved at all. */
+    NO_GUEST,
+}
+
+/**
+ * Which of the two guest paths a sign-in takes -- the rule behind every `markGuestPending` call in
+ * [AuthViewModel], in one testable place.
+ *
+ * Linking is preferred wherever it is possible, because preserving the UID beats copying data:
+ * nothing is written twice and no failure can orphan anything. A merge is therefore only for the
+ * case where linking is not on offer, which is logging in to an account that already exists
+ * ([canLinkToGuest] false) -- Firebase replaces the anonymous user there, and the guest's UID is
+ * gone the moment it succeeds.
+ *
+ * @param isGuest whether the user signed in right now is an anonymous (guest) session.
+ * @param canLinkToGuest whether this flow can upgrade that guest in place. True for sign-up (email
+ *   or Google from the Sign up screen), false for log in.
+ */
+internal fun guestAuthRoute(
+    isGuest: Boolean,
+    canLinkToGuest: Boolean,
+): GuestAuthRoute =
+    when {
+        !isGuest -> GuestAuthRoute.NO_GUEST
+        canLinkToGuest -> GuestAuthRoute.LINK_KEEPING_UID
+        else -> GuestAuthRoute.REPLACE_AND_MERGE
     }

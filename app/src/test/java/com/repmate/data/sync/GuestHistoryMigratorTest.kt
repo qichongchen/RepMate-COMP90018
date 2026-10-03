@@ -177,7 +177,7 @@ class GuestHistoryMigratorTest {
             migrator.markPending(GUEST)
             assertNotNull(marker.get())
 
-            migrator.discardUnresolvedCapture()
+            migrator.discardUnresolvedCapture(GUEST)
 
             assertNull(marker.get())
         }
@@ -188,7 +188,7 @@ class GuestHistoryMigratorTest {
             seedGuestSessions()
             captureAndSignIn()
 
-            migrator.discardUnresolvedCapture()
+            migrator.discardUnresolvedCapture(GUEST)
 
             assertEquals(PendingGuestMigration(GUEST, ACCOUNT), marker.get())
         }
@@ -204,8 +204,101 @@ class GuestHistoryMigratorTest {
             assertEquals(PendingGuestMigration(GUEST, ACCOUNT), marker.get())
         }
 
+    // ---------------------------------------------------------------------------------------
+    // More than one pending merge. The store used to hold a single marker, so the sequence in
+    // bothGuestHistoriesSurviveTwoOfflineLogins lost the first guest's rows for good.
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    fun aSecondGuestCaptureDoesNotOverwriteTheFirst() =
+        runTest {
+            migrator.markPending(GUEST)
+            migrator.markPending(SECOND_GUEST)
+
+            assertEquals(
+                listOf(PendingGuestMigration(GUEST), PendingGuestMigration(SECOND_GUEST)),
+                marker.all(),
+            )
+        }
+
+    @Test
+    fun bothGuestHistoriesSurviveTwoOfflineLogins() =
+        runTest {
+            // First guest: two sessions, logs in, and the merge cannot reach Firestore.
+            seedGuestSessions()
+            cloud.failOnSessionId = "a"
+            captureAndSignIn()
+            assertTrue(migrator.resume().isFailure)
+
+            // Signs out, uses the app as a guest again (a brand-new anonymous UID), works out,
+            // and logs in to the same account -- this is the capture that used to overwrite.
+            auth.uid = SECOND_GUEST
+            local.add(ownerId = SECOND_GUEST, session = session("c", reps = 4))
+            migrator.markPending(SECOND_GUEST)
+            auth.uid = ACCOUNT
+            migrator.recordSignIn()
+
+            // Back online: both guests' histories land in the account.
+            cloud.failOnSessionId = null
+            assertEquals(3, migrator.resume().getOrThrow())
+
+            assertEquals(setOf("a", "b", "c"), local.idsOwnedBy(ACCOUNT))
+            assertEquals(emptySet<String>(), local.idsOwnedBy(GUEST))
+            assertEquals(emptySet<String>(), local.idsOwnedBy(SECOND_GUEST))
+            assertEquals(setOf("a", "b", "c"), cloud.documentIds(ACCOUNT))
+            assertEquals(emptyList<PendingGuestMigration>(), marker.all())
+        }
+
+    @Test
+    fun anEntryThatKeepsFailingDoesNotStrandTheOthers() =
+        runTest {
+            local.add(ownerId = GUEST, session = session("a", reps = 3))
+            local.add(ownerId = SECOND_GUEST, session = session("c", reps = 4))
+            // "a" is the one Firestore will not take, and it is first in the queue.
+            cloud.failOnSessionId = "a"
+            migrator.markPending(GUEST)
+            migrator.markPending(SECOND_GUEST)
+            auth.uid = ACCOUNT
+            migrator.recordSignIn()
+
+            val result = migrator.resume()
+
+            assertTrue(result.isFailure)
+            // The healthy entry still went through, and only the broken one is left to retry.
+            assertEquals(setOf("c"), local.idsOwnedBy(ACCOUNT))
+            assertEquals(setOf("a"), local.idsOwnedBy(GUEST))
+            assertEquals(listOf(PendingGuestMigration(GUEST, ACCOUNT)), marker.all())
+        }
+
+    @Test
+    fun discardingOneFailedSignInLeavesAnEarlierCaptureAlone() =
+        runTest {
+            // An earlier capture the app never resolved (killed before recordSignIn).
+            migrator.markPending(GUEST)
+            // A second guest session whose sign-in then fails.
+            migrator.markPending(SECOND_GUEST)
+
+            migrator.discardUnresolvedCapture(SECOND_GUEST)
+
+            assertEquals(listOf(PendingGuestMigration(GUEST)), marker.all())
+        }
+
+    @Test
+    fun markPendingDoesNotWipeATargetAlreadyRecorded() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+
+            // A repeat capture for the same guest must not reset the target to null, which would
+            // let discardUnresolvedCapture throw the entry away after a successful sign-in.
+            migrator.markPending(GUEST)
+
+            assertEquals(listOf(PendingGuestMigration(GUEST, ACCOUNT)), marker.all())
+        }
+
     private companion object {
         const val GUEST = "guest-uid"
+        const val SECOND_GUEST = "second-guest-uid"
         const val ACCOUNT = "account-uid"
 
         fun session(
@@ -241,16 +334,23 @@ private class FakeAuth(
 }
 
 private class FakeMarkerStore : PendingMigrationStore {
-    private var stored: PendingGuestMigration? = null
+    private val stored = mutableListOf<PendingGuestMigration>()
 
-    override suspend fun get() = stored
+    /** The first pending entry, for the tests that only ever create one. */
+    fun get(): PendingGuestMigration? = stored.firstOrNull()
+
+    val size: Int get() = stored.size
+
+    override suspend fun all(): List<PendingGuestMigration> = stored.toList()
 
     override suspend fun save(migration: PendingGuestMigration) {
-        stored = migration
+        val at = stored.indexOfFirst { it.guestUid == migration.guestUid }
+        // Upsert in place, like the DataStore store: recording a target must not reorder the queue.
+        if (at >= 0) stored[at] = migration else stored += migration
     }
 
-    override suspend fun clear() {
-        stored = null
+    override suspend fun remove(guestUid: String) {
+        stored.removeAll { it.guestUid == guestUid }
     }
 }
 

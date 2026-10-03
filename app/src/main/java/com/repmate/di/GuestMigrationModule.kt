@@ -1,6 +1,8 @@
 package com.repmate.di
 
 import com.repmate.data.cloud.FirestoreMigrationUploader
+import com.repmate.data.cloud.FirestoreWorkoutDataSource
+import com.repmate.data.cloud.WorkoutUploader
 import com.repmate.data.local.RoomGuestSessionStore
 import com.repmate.data.sync.DataStorePendingMigrationStore
 import com.repmate.data.sync.GuestSessionStore
@@ -31,6 +33,10 @@ abstract class GuestMigrationModule {
     @Binds
     @Singleton
     abstract fun bindMigrationUploader(implementation: FirestoreMigrationUploader): MigrationUploader
+
+    @Binds
+    @Singleton
+    abstract fun bindWorkoutUploader(implementation: FirestoreWorkoutDataSource): WorkoutUploader
 
     companion object {
         /** SupervisorJob so one failed merge can't cancel unrelated work sharing the scope. */
