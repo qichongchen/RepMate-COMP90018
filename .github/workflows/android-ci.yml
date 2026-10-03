@@ -47,5 +47,11 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 
+      - name: Set up JDK 21 for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Run Firestore rules tests
         run: npx firebase emulators:exec --only firestore "node --test tests/firestore.rules.test.cjs"
