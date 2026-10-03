@@ -669,13 +669,35 @@ test("Profiles can be read by a single get but not listed or deleted", async () 
 
 test("Workout sessions are readable and writable only by their owner", async () => {
   const path = "users/alice/workoutSessions/s1";
+  const collectionPath = "users/alice/workoutSessions";
   const data = { id: "s1", exercise: "SQUAT", repCount: 3 };
 
   await assertSucceeds(realUser("alice").doc(path).set(data));
   await assertSucceeds(realUser("alice").doc(path).get());
+  // Owner can list their own workout sessions.
+  await assertSucceeds(
+      realUser("alice").collection(collectionPath).get()
+  );
+
+  // Another signed-in user cannot access or list Alice's workout sessions.
   await assertFails(realUser("bob").doc(path).get());
   await assertFails(realUser("bob").doc(path).set(data));
-  await assertFails(env.unauthenticatedContext().firestore().doc(path).get());
+  await assertFails(
+      realUser("bob").collection(collectionPath).get()
+  );
+
+  // An anonymous guest cannot access or list another user's workout sessions.
+  await assertFails(
+      guestUser("guest-uid").doc(path).get()
+  );
+  await assertFails(
+      guestUser("guest-uid").collection(collectionPath).get()
+  );
+
+  // A completely unauthenticated user cannot access the workout session.
+  await assertFails(
+      env.unauthenticatedContext().firestore().doc(path).get()
+  );
 });
 
 test("Friends are readable and writable only by their owner", async () => {

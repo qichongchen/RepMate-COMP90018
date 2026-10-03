@@ -18,11 +18,12 @@ val localProperties =
 
 val googleWebClientId =
     localProperties.getProperty("GOOGLE_WEB_CLIENT_ID")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
         ?: error(
             "Missing GOOGLE_WEB_CLIENT_ID in local.properties. " +
                     "Copy the OAuth Web Client ID (client_type 3) from app/google-services.json."
         )
-
 
 android {
     namespace = "com.example.repmate"

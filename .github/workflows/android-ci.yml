@@ -25,6 +25,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Firebase test dependencies
+        run: npm ci
+
+      - name: Create local.properties
+        run: |
+          echo "GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" > local.properties
+
       - name: Make Gradle executable
         run: chmod +x gradlew
 
@@ -33,3 +46,6 @@ jobs:
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
+
+      - name: Run Firestore rules tests
+        run: npx firebase emulators:exec --only firestore "node --test tests/firestore.rules.test.cjs"
