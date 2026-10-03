@@ -8,13 +8,21 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
-// Secrets that must never be hardcoded (Golden Rule 6): read from local.properties, which is
-// gitignored, with a placeholder fallback so a fresh checkout without that file still builds.
+// Read GOOGLE_WEB_CLIENT_ID from local.properties.
+// Fail the build if it's missing, since Google Sign-In needs it.
 val localProperties =
     Properties().apply {
         val file = rootProject.file("local.properties")
         if (file.exists()) file.inputStream().use { load(it) }
     }
+
+val googleWebClientId =
+    localProperties.getProperty("GOOGLE_WEB_CLIENT_ID")
+        ?: error(
+            "Missing GOOGLE_WEB_CLIENT_ID in local.properties. " +
+                    "Copy the OAuth Web Client ID (client_type 3) from app/google-services.json."
+        )
+
 
 android {
     namespace = "com.example.repmate"
@@ -31,15 +39,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Google Sign-In's Credential Manager flow needs the Firebase project's OAuth Web
-        // Client ID (Firebase console > Authentication > Sign-in method > Google > Web SDK
-        // configuration). Real teams add GOOGLE_WEB_CLIENT_ID=<value> to their own
-        // local.properties (gitignored); this placeholder just keeps the build green for
-        // anyone who hasn't set that up yet -- Google Sign-In itself won't work until it's real.
         buildConfigField(
             "String",
             "GOOGLE_WEB_CLIENT_ID",
-            "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "REPLACE_WITH_FIREBASE_WEB_CLIENT_ID")}\"",
+            "\"$googleWebClientId\"",
         )
 
         buildConfigField(
