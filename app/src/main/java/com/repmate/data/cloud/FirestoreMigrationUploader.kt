@@ -19,7 +19,7 @@ class FirestoreMigrationUploader
     @Inject
     constructor(
         private val authRepository: AuthRepository,
-        private val workoutDataSource: FirestoreWorkoutDataSource,
+        private val workoutUploader: WorkoutUploader,
     ) : MigrationUploader {
         override suspend fun upload(
             session: WorkoutSession,
@@ -28,6 +28,6 @@ class FirestoreMigrationUploader
             if (authRepository.getCurrentUserId() != targetUid) {
                 return Result.failure(IllegalStateException("Signed-in user is not the merge target"))
             }
-            return workoutDataSource.upload(session)
+            return workoutUploader.upload(session)
         }
     }

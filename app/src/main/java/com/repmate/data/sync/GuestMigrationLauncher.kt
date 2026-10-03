@@ -37,8 +37,9 @@ class GuestMigrationLauncher
             safely("mark pending") { migrator.markPending(guestUid) }
         }
 
-        /** The replacing sign-in failed or was cancelled: forget the guest UID captured for it. */
-        suspend fun discardUnresolvedCapture() = safely("discard capture") { migrator.discardUnresolvedCapture() }
+        /** The replacing sign-in failed or was cancelled: forget the capture made for [guestUid]. */
+        suspend fun discardUnresolvedCapture(guestUid: String) =
+            safely("discard capture") { migrator.discardUnresolvedCapture(guestUid) }
 
         /** The replacing sign-in succeeded: note the target account, then merge in the background. */
         suspend fun onSignedIn() {
@@ -50,9 +51,7 @@ class GuestMigrationLauncher
         /** Picks up a merge left unfinished by a crash, kill or lost connection. Call once at app start. */
         fun resumeOnAppStart() {
             scope.launch {
-                // Firebase restores the persisted user asynchronously; wait briefly for it instead
-                // of reading a possibly-still-null currentUser and skipping the resume.
-                val uid = withTimeoutOrNull(AUTH_WAIT_MS) { firebaseAuth.uidUpdates().first { it != null } }
+                val uid = awaitSignedInUid(firebaseAuth.uidUpdates(), AUTH_WAIT_MS)
                 if (uid != null) runResume()
             }
         }
@@ -72,15 +71,7 @@ class GuestMigrationLauncher
         private suspend fun safely(
             what: String,
             block: suspend () -> Unit,
-        ) {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Guest merge: failed to $what", e)
-            }
-        }
+        ) = swallowingFailures({ e -> Log.w(TAG, "Guest merge: failed to $what", e) }, block)
 
         private fun FirebaseAuth.uidUpdates(): Flow<String?> =
             callbackFlow {
@@ -94,3 +85,39 @@ class GuestMigrationLauncher
             const val AUTH_WAIT_MS = 10_000L
         }
     }
+
+/**
+ * The first non-null uid [uidUpdates] reports, or null if none arrives within [timeoutMs].
+ *
+ * Firebase restores the persisted user asynchronously, so reading `currentUser` at app start can
+ * see null for a moment and skip a resume that was due. Waiting for the first *event* instead
+ * fixes that; the timeout is what stops a device with no connectivity holding the coroutine open
+ * for the life of the process.
+ *
+ * Separate from [GuestMigrationLauncher] and free of Firebase and `Log` so it runs in a plain JVM
+ * test, the same split [com.repmate.ui.navigation.resolveStartDestination] uses.
+ */
+internal suspend fun awaitSignedInUid(
+    uidUpdates: Flow<String?>,
+    timeoutMs: Long,
+): String? = withTimeoutOrNull(timeoutMs) { uidUpdates.first { it != null } }
+
+/**
+ * Runs [block], handing any failure to [onError] instead of letting it out.
+ *
+ * Nothing about the merge may break sign-in (Golden Rule 7): a DataStore write that fails must
+ * leave the user signed in, with the entry still there for the next launch. Cancellation is not a
+ * failure and is rethrown, so a cancelled scope still unwinds.
+ */
+internal suspend fun swallowingFailures(
+    onError: (Throwable) -> Unit,
+    block: suspend () -> Unit,
+) {
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        onError(e)
+    }
+}

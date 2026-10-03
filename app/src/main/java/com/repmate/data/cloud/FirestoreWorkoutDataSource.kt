@@ -13,13 +13,13 @@ import javax.inject.Singleton
 class FirestoreWorkoutDataSource @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val authRepository: AuthRepository,
-) {
+) : WorkoutUploader {
 
     private companion object {
         const val TAG = "FirestoreWorkout"
     }
 
-    suspend fun upload(session: WorkoutSession): Result<Unit> {
+    override suspend fun upload(session: WorkoutSession): Result<Unit> {
         val userId = authRepository.getCurrentUserId()
             ?: return Result.failure(
                 IllegalStateException("No authenticated user")
