@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
@@ -182,8 +183,8 @@ private fun SessionDetailBody(
             )
             RepMateCard {
                 ScoreTrendChart(
-                    scores = uiState.reps.map { it.score },
-                    modifier = Modifier.fillMaxWidth().height(120.dp).padding(8.dp),
+                    reps = uiState.reps,
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
                 )
             }
         }
@@ -399,20 +400,28 @@ private fun RepRow(
 }
 
 /**
- * Each rep's score (0-10) plotted in order, so a session's form-quality trend is visible at a
- * glance. Same "degrade gracefully instead of drawing something misleading" rule as
- * [AccelerometerCurveChart] in MotionReplayScreen: fewer than two points can't show a trend, so
- * that case shows a short explanatory label instead of an empty or single-dot canvas.
+ * Each rep's total score (0-10) plotted alongside its depth factor (rangePercent, rescaled onto
+ * the same 0-10 axis), so the chart itself -- not just the per-rep reasons text below it -- shows
+ * how one of the individual factors behind the score moved over the session. Tempo and consistency
+ * aren't plotted here: tempo is in seconds rather than 0-10 so it would need a second axis to
+ * compare fairly, and consistency has no standalone numeric field (it only ever shows up as a
+ * reasons string) -- both stay in the per-rep list's text below the chart, same as before.
+ *
+ * Same "degrade gracefully instead of drawing something misleading" rule as
+ * [AccelerometerCurveChart] in MotionReplayScreen: fewer than two reps can't show a trend, so that
+ * case shows a short explanatory label instead of an empty or single-dot canvas. A rep whose depth
+ * isn't measurable (`rangePercent < 0`, the same sentinel `PushupWorkoutViewModel.NOT_MEASURABLE_RANGE_PERCENT`
+ * uses) breaks the depth line at that point instead of plotting a fake value or dropping to zero.
  *
  * The y-axis is a fixed 0..10 range (not auto-scaled to this session's own min/max), so the same
  * chart reads the same way across different sessions instead of exaggerating small swings.
  */
 @Composable
 private fun ScoreTrendChart(
-    scores: List<Float>,
+    reps: List<RepScore>,
     modifier: Modifier = Modifier,
 ) {
-    if (scores.size < 2) {
+    if (reps.size < 2) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             Text(
                 text = "Need at least two scored reps to draw a trend.",
@@ -423,33 +432,88 @@ private fun ScoreTrendChart(
         return
     }
 
-    val lineColor = MaterialTheme.colorScheme.primary
+    val scoreColor = MaterialTheme.colorScheme.primary
+    val depthColor = MaterialTheme.colorScheme.tertiary
     val axisColor = MaterialTheme.colorScheme.outlineVariant
 
-    Canvas(modifier = modifier) {
-        val valueMin = 0f
-        val valueMax = 10f
-        val valueSpan = valueMax - valueMin
+    Column(modifier = modifier) {
+        Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+            val valueMin = 0f
+            val valueMax = 10f
+            val valueSpan = valueMax - valueMin
 
-        fun xFor(index: Int): Float = (index.toFloat() / (scores.size - 1)) * size.width
-        fun yFor(value: Float): Float = size.height - ((value - valueMin) / valueSpan) * size.height
+            fun xFor(index: Int): Float = (index.toFloat() / (reps.size - 1)) * size.width
+            fun yFor(value: Float): Float = size.height - ((value - valueMin) / valueSpan) * size.height
 
-        drawLine(axisColor, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
-        drawLine(axisColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
+            drawLine(axisColor, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+            drawLine(axisColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
 
-        val path =
-            Path().apply {
-                scores.forEachIndexed { index, score ->
-                    val x = xFor(index)
-                    val y = yFor(score)
-                    if (index == 0) moveTo(x, y) else lineTo(x, y)
+            val scorePath =
+                Path().apply {
+                    reps.forEachIndexed { index, rep ->
+                        val x = xFor(index)
+                        val y = yFor(rep.score)
+                        if (index == 0) moveTo(x, y) else lineTo(x, y)
+                    }
+                }
+            drawPath(scorePath, color = scoreColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+            reps.forEachIndexed { index, rep ->
+                drawCircle(color = scoreColor, radius = 3.dp.toPx(), center = Offset(xFor(index), yFor(rep.score)))
+            }
+
+            // Depth is its own dashed line on the same 0-10 axis (rangePercent / 10). A rep with
+            // no measurable depth breaks the line instead of plotting a fake point.
+            val depthDash = PathEffect.dashPathEffect(floatArrayOf(10f, 6f), 0f)
+            val depthPath = Path()
+            var depthPathStarted = false
+            reps.forEachIndexed { index, rep ->
+                if (rep.rangePercent < 0) {
+                    depthPathStarted = false
+                    return@forEachIndexed
+                }
+                val x = xFor(index)
+                val y = yFor(rep.rangePercent / 10f)
+                if (!depthPathStarted) {
+                    depthPath.moveTo(x, y)
+                    depthPathStarted = true
+                } else {
+                    depthPath.lineTo(x, y)
                 }
             }
-        drawPath(path, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            drawPath(
+                depthPath,
+                color = depthColor,
+                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, pathEffect = depthDash),
+            )
 
-        scores.forEachIndexed { index, score ->
-            drawCircle(color = lineColor, radius = 3.dp.toPx(), center = Offset(xFor(index), yFor(score)))
+            reps.forEachIndexed { index, rep ->
+                if (rep.rangePercent >= 0) {
+                    drawCircle(color = depthColor, radius = 2.5.dp.toPx(), center = Offset(xFor(index), yFor(rep.rangePercent / 10f)))
+                }
+            }
         }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            ScoreTrendLegendEntry(color = scoreColor, label = "score")
+            Spacer(modifier = Modifier.size(16.dp))
+            ScoreTrendLegendEntry(color = depthColor, label = "depth")
+        }
+    }
+}
+
+/** One "● label" swatch in [ScoreTrendChart]'s legend row. */
+@Composable
+private fun ScoreTrendLegendEntry(
+    color: Color,
+    label: String,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(10.dp).background(color = color, shape = CircleShape))
+        Spacer(modifier = Modifier.size(4.dp))
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 private const val NOT_SCORED_DASH = "–"
