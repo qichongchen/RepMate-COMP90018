@@ -42,19 +42,20 @@ class FirestoreFriendRepository @Inject constructor(
 
         return try {
             // Search for the target user by display name.
-            val querySnapshot = firestore
-                .collection("users")
-                .whereEqualTo("displayName", name)
-                .limit(1)
+            val usernameDocument = firestore
+                .collection("usernames")
+                .document(name.lowercase())
                 .get()
                 .await()
-
-            val targetUser = querySnapshot.documents.firstOrNull()
+            if (!usernameDocument.exists()) {
+                return Result.failure(
+                    IllegalArgumentException("User not found")
+                )
+            }
+            val friendId = usernameDocument.getString("uid")
                 ?: return Result.failure(
                     IllegalArgumentException("User not found")
                 )
-
-            val friendId = targetUser.id
 
             if (friendId == currentUserId) {
                 return Result.failure(
