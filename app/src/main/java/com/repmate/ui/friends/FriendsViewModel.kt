@@ -3,6 +3,7 @@ package com.repmate.ui.friends
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.repmate.data.repo.Friend
+import com.repmate.data.repo.FriendRequest
 import com.repmate.data.repo.FriendRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,7 @@ import javax.inject.Inject
 
 data class FriendsUiState(
     val friends: List<Friend> = emptyList(),
+    val friendRequests: List<FriendRequest> = emptyList(),
     val isLoading: Boolean = true,
     val isAdding: Boolean = false,
     val message: String? = null,
@@ -28,6 +30,11 @@ class FriendsViewModel @Inject constructor(
     val uiState: StateFlow<FriendsUiState> = _uiState.asStateFlow()
 
     init {
+        observeFriends()
+        observeFriendRequests()
+    }
+
+    private fun observeFriends() {
         viewModelScope.launch {
             friendRepository.observeFriends().collect { friends ->
                 _uiState.update {
@@ -40,10 +47,20 @@ class FriendsViewModel @Inject constructor(
         }
     }
 
-    fun addFriend(userId: String) {
-        if (userId.isBlank()) {
+    private fun observeFriendRequests() {
+        viewModelScope.launch {
+            friendRepository.observeFriendRequests().collect { requests ->
+                _uiState.update {
+                    it.copy(friendRequests = requests)
+                }
+            }
+        }
+    }
+
+    fun sendFriendRequest(displayName: String) {
+        if (displayName.isBlank()) {
             _uiState.update {
-                it.copy(message = "Enter a user ID")
+                it.copy(message = "Enter a display name")
             }
             return
         }
@@ -56,18 +73,48 @@ class FriendsViewModel @Inject constructor(
                 )
             }
 
-            val result = friendRepository.addFriend(userId)
+            val result = friendRepository.sendFriendRequest(displayName)
 
             _uiState.update {
                 it.copy(
                     isAdding = false,
                     message = result.fold(
-                        onSuccess = { "Friend added" },
+                        onSuccess = { "Friend request sent" },
                         onFailure = { error ->
-                            error.message ?: "Could not add friend"
+                            error.message ?: "Could not send friend request"
                         },
                     ),
                 )
+            }
+        }
+    }
+
+    fun acceptFriendRequest(userId: String) {
+        viewModelScope.launch {
+            val result = friendRepository.acceptFriendRequest(userId)
+
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        message = result.exceptionOrNull()?.message
+                            ?: "Could not accept friend request"
+                    )
+                }
+            }
+        }
+    }
+
+    fun rejectFriendRequest(userId: String) {
+        viewModelScope.launch {
+            val result = friendRepository.rejectFriendRequest(userId)
+
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        message = result.exceptionOrNull()?.message
+                            ?: "Could not reject friend request"
+                    )
+                }
             }
         }
     }
