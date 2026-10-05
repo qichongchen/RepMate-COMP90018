@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlinx.coroutines.flow.catch
 
 data class FriendsUiState(
     val friends: List<Friend> = emptyList(),
@@ -49,11 +50,20 @@ class FriendsViewModel @Inject constructor(
 
     private fun observeFriendRequests() {
         viewModelScope.launch {
-            friendRepository.observeFriendRequests().collect { requests ->
-                _uiState.update {
-                    it.copy(friendRequests = requests)
+            friendRepository.observeFriendRequests()
+                .catch { error ->
+                    _uiState.update {
+                        it.copy(
+                            message = error.message
+                                ?: "Could not load friend requests"
+                        )
+                    }
                 }
-            }
+                .collect { requests ->
+                    _uiState.update {
+                        it.copy(friendRequests = requests)
+                    }
+                }
         }
     }
 
