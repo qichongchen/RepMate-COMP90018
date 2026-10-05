@@ -38,6 +38,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.data.repo.Friend
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsScreen(
@@ -48,7 +49,7 @@ fun FriendsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var friendUserId by remember { mutableStateOf("") }
+    var displayName by remember { mutableStateOf("") }
 
     LaunchedEffect(uiState.message) {
         val message = uiState.message ?: return@LaunchedEffect
@@ -81,74 +82,105 @@ fun FriendsScreen(
             }
         },
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Add a friend using their user ID")
+            item {
+                Text("Add a friend using their display name")
+            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            item {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text("Display name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
-            OutlinedTextField(
-                value = friendUserId,
-                onValueChange = { friendUserId = it },
-                label = { Text("User ID") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    viewModel.addFriend(friendUserId)
-                    friendUserId = ""
-                },
-                enabled = friendUserId.isNotBlank() && !uiState.isAdding,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (uiState.isAdding) {
-                    CircularProgressIndicator()
-                } else {
-                    Text("Add friend")
+            item {
+                Button(
+                    onClick = {
+                        viewModel.sendFriendRequest(displayName)
+                        displayName = ""
+                    },
+                    enabled = displayName.isNotBlank() && !uiState.isAdding,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (uiState.isAdding) {
+                        CircularProgressIndicator()
+                    } else {
+                        Text("Send request")
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Friend requests")
+            }
 
-            Text("Your friends")
+            if (uiState.friendRequests.isEmpty()) {
+                item {
+                    Text("No pending friend requests.")
+                }
+            } else {
+                items(
+                    items = uiState.friendRequests,
+                    key = { request -> request.userId },
+                ) { request ->
+                    FriendRequestRow(
+                        displayName = request.displayName,
+                        onAcceptClick = {
+                            viewModel.acceptFriendRequest(request.userId)
+                        },
+                        onRejectClick = {
+                            viewModel.rejectFriendRequest(request.userId)
+                        },
+                    )
+                }
+            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Your friends")
+            }
 
             when {
                 uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    )
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
 
                 uiState.friends.isEmpty() -> {
-                    Text("You haven't added any friends yet.")
+                    item {
+                        Text("You haven't added any friends yet.")
+                    }
                 }
 
                 else -> {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(
-                            items = uiState.friends,
-                            key = { friend -> friend.userId },
-                        ) { friend ->
-                            FriendRow(
-                                friend = friend,
-                                onRemoveClick = {
-                                    viewModel.removeFriend(friend.userId)
-                                },
-                            )
-                        }
+                    items(
+                        items = uiState.friends,
+                        key = { friend -> friend.userId },
+                    ) { friend ->
+                        FriendRow(
+                            friend = friend,
+                            onRemoveClick = {
+                                viewModel.removeFriend(friend.userId)
+                            },
+                        )
                     }
                 }
             }
@@ -170,15 +202,41 @@ private fun FriendRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(
+        Text(
+            text = friend.displayName,
             modifier = Modifier.weight(1f),
-        ) {
-            Text(friend.displayName)
-            Text(friend.userId)
-        }
+        )
 
         TextButton(onClick = onRemoveClick) {
             Text("Remove")
+        }
+    }
+}
+@Composable
+private fun FriendRequestRow(
+    displayName: String,
+    onAcceptClick: () -> Unit,
+    onRejectClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = displayName,
+            modifier = Modifier.weight(1f),
+        )
+
+        TextButton(onClick = onRejectClick) {
+            Text("Reject")
+        }
+
+        Button(onClick = onAcceptClick) {
+            Text("Accept")
         }
     }
 }
