@@ -721,3 +721,102 @@ test("The leaderboard is readable when signed in and never writable", async () =
     env.unauthenticatedContext().firestore().doc("leaderboard/alice").get()
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// Friend requests
+// ---------------------------------------------------------------------------------------------
+
+test("User can send a friend request to another user", async () => {
+  const db = env.authenticatedContext("alice").firestore();
+
+  await assertSucceeds(
+    db.doc("users/bob/friendRequests/alice").set({
+      fromUserId: "alice",
+      displayName: "Alice",
+      createdAt: serverTime()
+    })
+  );
+});
+test("User cannot send a friend request pretending to be another user", async () => {
+  const db = env.authenticatedContext("charlie").firestore();
+
+  await assertFails(
+    db.doc("users/bob/friendRequests/alice").set({
+      fromUserId: "alice",
+      displayName: "Alice",
+      createdAt: serverTime()
+    })
+  );
+});
+async function seedFriendRequest(senderId, recipientId, displayName = "Alice") {
+  await env.withSecurityRulesDisabled(async context => {
+    await context.firestore()
+      .doc(`users/${recipientId}/friendRequests/${senderId}`)
+      .set({
+        fromUserId: senderId,
+        displayName: displayName,
+        createdAt: firebase.firestore.Timestamp.now()
+      });
+  });
+}
+test("Recipient can read incoming friend requests", async () => {
+  await seedFriendRequest("alice", "bob");
+
+  const db = env.authenticatedContext("bob").firestore();
+
+  await assertSucceeds(
+    db.collection("users/bob/friendRequests").get()
+  );
+});
+test("Another user cannot read someone else's friend requests", async () => {
+  await seedFriendRequest("alice", "bob");
+
+  const db = env.authenticatedContext("charlie").firestore();
+
+  await assertFails(
+    db.collection("users/bob/friendRequests").get()
+  );
+});
+test("Recipient can reject a friend request", async () => {
+  await seedFriendRequest("alice", "bob");
+
+  const db = env.authenticatedContext("bob").firestore();
+
+  await assertSucceeds(
+    db.doc("users/bob/friendRequests/alice").delete()
+  );
+});
+
+test("Recipient can accept a friend request and create both friend entries", async () => {
+  await seedFriendRequest("alice", "bob");
+
+  const db = env.authenticatedContext("bob").firestore();
+  const batch = db.batch();
+
+  // Bob's friend list gets Alice
+  batch.set(
+    db.doc("users/bob/friends/alice"),
+    {
+      friendUserId: "alice",
+      displayName: "Alice",
+      addedAt: serverTime()
+    }
+  );
+
+  // Alice's friend list gets Bob
+  batch.set(
+    db.doc("users/alice/friends/bob"),
+    {
+      friendUserId: "bob",
+      displayName: "Bob",
+      addedAt: serverTime()
+    }
+  );
+
+  // Remove the pending request
+  batch.delete(
+    db.doc("users/bob/friendRequests/alice")
+  );
+
+  await assertSucceeds(batch.commit());
+});
