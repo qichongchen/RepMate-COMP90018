@@ -175,7 +175,10 @@ service cloud.firestore {
     match /users/{userId}/friendRequests/{senderId} {
       // The recipient can read their own incoming requests.
       allow read: if request.auth != null
-        && request.auth.uid == userId;
+        && (
+          request.auth.uid == userId
+          || request.auth.uid == senderId
+        );
       // A sender can create a request for another user.
       allow create: if request.auth != null
         && request.auth.uid == senderId

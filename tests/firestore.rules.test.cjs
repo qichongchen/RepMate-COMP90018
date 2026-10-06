@@ -820,3 +820,13 @@ test("Recipient can accept a friend request and create both friend entries", asy
 
   await assertSucceeds(batch.commit());
 });
+
+test("Sender can read their own outgoing friend request", async () => {
+  await seedFriendRequest("alice", "bob");
+
+  const db = env.authenticatedContext("alice").firestore();
+
+  await assertSucceeds(
+    db.doc("users/bob/friendRequests/alice").get()
+  );
+});

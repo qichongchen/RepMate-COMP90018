@@ -63,6 +63,33 @@ class FirestoreFriendRepository @Inject constructor(
                 )
             }
 
+            val existingFriend = firestore
+                .collection("users")
+                .document(currentUserId)
+                .collection("friends")
+                .document(friendId)
+                .get()
+                .await()
+
+            if (existingFriend.exists()) {
+                return Result.failure(
+                    IllegalArgumentException("You are already friends")
+                )
+            }
+
+            val existingRequest = firestore
+                .collection("users")
+                .document(friendId)
+                .collection("friendRequests")
+                .document(currentUserId)
+                .get()
+                .await()
+
+            if (existingRequest.exists()) {
+                return Result.failure(
+                    IllegalArgumentException("Friend request already sent")
+                )
+            }
             // Get the current user's display name.
             val currentUserProfile = firestore
                 .collection("users")
