@@ -133,7 +133,7 @@ fun FriendsScreen(
             } else {
                 items(
                     items = uiState.friendRequests,
-                    key = { request -> request.userId },
+                    key = { "request_${it.userId}" },
                 ) { request ->
                     FriendRequestRow(
                         displayName = request.displayName,
@@ -173,7 +173,7 @@ fun FriendsScreen(
                 else -> {
                     items(
                         items = uiState.friends,
-                        key = { friend -> friend.userId },
+                        key = { "friend_${it.userId}" },
                     ) { friend ->
                         FriendRow(
                             friend = friend,
