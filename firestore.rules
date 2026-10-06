@@ -139,8 +139,54 @@ service cloud.firestore {
 
     // Friends
     match /users/{userId}/friends/{friendId} {
-      allow read, write: if request.auth != null
+
+      // Users can read their own friend list.
+      allow read: if request.auth != null
         && request.auth.uid == userId;
+
+      // Users can create entries in their own friend list.
+      //
+      // The recipient of a pending friend request may also create the
+      // matching reverse entry for the sender when accepting the request.
+      allow create: if request.auth != null
+        && (
+          request.auth.uid == userId
+          ||
+          (
+            request.auth.uid == friendId
+            && exists(
+              /databases/$(database)/documents/users/$(friendId)/friendRequests/$(userId)
+            )
+          )
+        );
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId;
+
+      // Either participant may remove the friendship.
+      allow delete: if request.auth != null
+        && (
+          request.auth.uid == userId
+          || request.auth.uid == friendId
+        );
+    }
+
+    // Friend Requests
+    match /users/{userId}/friendRequests/{senderId} {
+      // The recipient can read their own incoming requests.
+      allow read: if request.auth != null
+        && (
+          request.auth.uid == userId
+          || request.auth.uid == senderId
+        );
+      // A sender can create a request for another user.
+      allow create: if request.auth != null
+        && request.auth.uid == senderId
+        && request.resource.data.fromUserId == request.auth.uid;
+      // The recipient can remove the request after accepting or rejecting it.
+      allow delete: if request.auth != null
+        && request.auth.uid == userId;
+      allow update: if false;
     }
 
     // Ghost Duel shared scores

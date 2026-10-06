@@ -4,3 +4,8 @@ data class Friend(
     val userId: String,
     val displayName: String,
 )
+
+data class FriendRequest(
+    val userId: String,
+    val displayName: String,
+)
