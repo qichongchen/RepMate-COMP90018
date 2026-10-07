@@ -295,6 +295,86 @@ class RoomSessionRepositoryTest {
             repository.getMyBestScore(ExerciseType.SQUAT)?.score
         )
     }
+
+    // bestSessionFor: the local half of republishing Ghost Duel scores (see LocalBestScoreSync).
+
+    private fun bestSessionRepo(userId: String? = "user-1") =
+        FakeAuthRepository(userId).let { auth -> auth to RoomSessionRepository(FakeSessionDao(), auth) }
+
+    private fun session(id: String, exercise: ExerciseType, startedAt: Long, vararg scores: Float) =
+        WorkoutSession(
+            id = id,
+            exercise = exercise,
+            startedAt = startedAt,
+            endedAt = startedAt + 1000L,
+            reps = scores.mapIndexed { i, score ->
+                RepScore(
+                    repIndex = i,
+                    score = score,
+                    tempoSeconds = 2f,
+                    rangePercent = 90,
+                    pauseSeconds = 0f,
+                    reasons = emptyList()
+                )
+            }
+        )
+
+    @Test
+    fun bestSessionForReturnsTheHighestAverageSessionWithItsReps() = runTest {
+        val (_, repository) = bestSessionRepo()
+        repository.save(session("low", ExerciseType.SQUAT, 1000L, 6f, 6f, 6f))
+        repository.save(session("high", ExerciseType.SQUAT, 2000L, 9f, 8f))
+        repository.save(session("other-exercise", ExerciseType.PUSHUP, 3000L, 10f))
+
+        val best = repository.bestSessionFor(ExerciseType.SQUAT)
+
+        assertEquals("high", best?.id)
+        assertEquals(listOf(9f, 8f), best?.reps?.map { it.score })
+    }
+
+    @Test
+    fun bestSessionForBreaksTiesByMoreRepsThenNewer() = runTest {
+        val (_, repository) = bestSessionRepo()
+        repository.save(session("few", ExerciseType.SQUAT, 3000L, 7f, 7f))
+        repository.save(session("many-old", ExerciseType.SQUAT, 1000L, 7f, 7f, 7f))
+        repository.save(session("many-new", ExerciseType.SQUAT, 2000L, 7f, 7f, 7f))
+
+        assertEquals("many-new", repository.bestSessionFor(ExerciseType.SQUAT)?.id)
+    }
+
+    @Test
+    fun bestSessionForIgnoresZeroRepSessionsAndReturnsNullWhenThereAreNone() = runTest {
+        val (_, repository) = bestSessionRepo()
+        repository.save(session("empty", ExerciseType.SQUAT, 1000L))
+
+        assertEquals(null, repository.bestSessionFor(ExerciseType.SQUAT))
+        assertEquals(null, repository.bestSessionFor(ExerciseType.JUMPING_JACK))
+
+        repository.save(session("real", ExerciseType.SQUAT, 500L, 5f))
+        assertEquals("real", repository.bestSessionFor(ExerciseType.SQUAT)?.id)
+    }
+
+    @Test
+    fun bestSessionForNeverReturnsAnotherUsersSession() = runTest {
+        val (auth, repository) = bestSessionRepo(userId = "someone-else")
+        repository.save(session("theirs", ExerciseType.SQUAT, 1000L, 10f, 10f))
+
+        auth.setCurrentUserId("user-1")
+        repository.save(session("mine", ExerciseType.SQUAT, 2000L, 5f))
+
+        // The other account's session scores higher but is not this user's.
+        assertEquals("mine", repository.bestSessionFor(ExerciseType.SQUAT)?.id)
+    }
+
+    @Test
+    fun bestSessionForReturnsNullWhenSignedOut() = runTest {
+        val (auth, repository) = bestSessionRepo()
+        repository.save(session("mine", ExerciseType.SQUAT, 1000L, 5f))
+
+        auth.setCurrentUserId(null)
+
+        assertEquals(null, repository.bestSessionFor(ExerciseType.SQUAT))
+    }
 }
 
 private class FakeSessionDao : SessionDao {
@@ -378,6 +458,24 @@ private class FakeSessionDao : SessionDao {
     }
 
 
+    /** Same order as the real query: highest average, then more reps, then newer; 0-rep sessions never qualify. */
+    override suspend fun getBestSessionId(
+        ownerId: String,
+        exercise: String
+    ): String? {
+        return sessions.value
+            .filter { it.ownerId == ownerId && it.exercise == exercise }
+            .filter { repScores[it.id].orEmpty().isNotEmpty() }
+            .sortedWith(
+                compareByDescending<WorkoutSessionEntity> {
+                    repScores.getValue(it.id).map { rep -> rep.score.toDouble() }.average()
+                }
+                    .thenByDescending { repScores.getValue(it.id).size }
+                    .thenByDescending { it.startedAt }
+            )
+            .firstOrNull()
+            ?.id
+    }
 
     override suspend fun getSessionsByOwner(
         ownerId: String

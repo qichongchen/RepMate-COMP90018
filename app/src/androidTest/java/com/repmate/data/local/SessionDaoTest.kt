@@ -351,4 +351,58 @@ class SessionDaoTest {
             sessions.map { it.id }
         )
     }
+
+    // getBestSessionId: the real SQL behind republishing the best local session per exercise.
+
+    private suspend fun insertSessionWithReps(
+        id: String,
+        owner: String,
+        exercise: String,
+        startedAt: Long,
+        vararg scores: Float
+    ) {
+        sessionDao.insertSession(
+            WorkoutSessionEntity(id = id, ownerId = owner, exercise = exercise, startedAt = startedAt)
+        )
+        if (scores.isNotEmpty()) {
+            sessionDao.insertRepScores(
+                scores.mapIndexed { index, score ->
+                    RepScoreEntity(
+                        sessionId = id,
+                        repIndex = index,
+                        score = score,
+                        tempoSeconds = 2f,
+                        rangePercent = 90,
+                        pauseSeconds = 0f,
+                        reasons = ""
+                    )
+                }
+            )
+        }
+    }
+
+    @Test
+    fun getBestSessionId_prefersHigherAverageThenMoreRepsThenNewer() = runTest {
+        insertSessionWithReps("low", ownerId, "SQUAT", 9000L, 6f, 6f, 6f, 6f)
+        insertSessionWithReps("high-few", ownerId, "SQUAT", 1000L, 8f, 8f)
+        assertEquals("high-few", sessionDao.getBestSessionId(ownerId, "SQUAT"))
+
+        insertSessionWithReps("high-many-old", ownerId, "SQUAT", 2000L, 8f, 8f, 8f)
+        assertEquals("high-many-old", sessionDao.getBestSessionId(ownerId, "SQUAT"))
+
+        insertSessionWithReps("high-many-new", ownerId, "SQUAT", 3000L, 8f, 8f, 8f)
+        assertEquals("high-many-new", sessionDao.getBestSessionId(ownerId, "SQUAT"))
+    }
+
+    @Test
+    fun getBestSessionId_ignoresZeroRepSessionsOtherExercisesAndOtherOwners() = runTest {
+        insertSessionWithReps("empty", ownerId, "SQUAT", 1000L)
+        insertSessionWithReps("pushups", ownerId, "PUSHUP", 2000L, 10f)
+        insertSessionWithReps("theirs", "someone-else", "SQUAT", 3000L, 10f, 10f)
+
+        assertEquals(null, sessionDao.getBestSessionId(ownerId, "SQUAT"))
+
+        insertSessionWithReps("mine", ownerId, "SQUAT", 4000L, 5f)
+        assertEquals("mine", sessionDao.getBestSessionId(ownerId, "SQUAT"))
+    }
 }

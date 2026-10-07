@@ -72,6 +72,31 @@ interface SessionDao {
         exercise: String
     ): BestSessionResult?
 
+    /**
+     * The id of [ownerId]'s best session for [exercise], or null if there is none. Same order as
+     * [getBestSessionScore] (highest average rep score, then more reps, then newer). The inner
+     * join on `rep_scores` drops sessions with no reps, so they can never be the best.
+     */
+    @Query(
+        """
+    SELECT ws.id
+    FROM workout_sessions AS ws
+    INNER JOIN rep_scores AS rs
+        ON rs.sessionId = ws.id
+    WHERE ws.ownerId = :ownerId
+      AND ws.exercise = :exercise
+    GROUP BY ws.id
+    ORDER BY AVG(rs.score) DESC,
+             COUNT(*) DESC,
+             ws.startedAt DESC
+    LIMIT 1
+    """
+    )
+    suspend fun getBestSessionId(
+        ownerId: String,
+        exercise: String
+    ): String?
+
     /** Every session stored under [ownerId], oldest first. Used to read a replaced guest's history. */
     @Query("SELECT * FROM workout_sessions WHERE ownerId = :ownerId ORDER BY startedAt ASC")
     suspend fun getSessionsByOwner(ownerId: String): List<WorkoutSessionEntity>
