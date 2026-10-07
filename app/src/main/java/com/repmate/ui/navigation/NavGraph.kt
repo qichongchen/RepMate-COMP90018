@@ -283,13 +283,10 @@ fun RepMateNavGraph(
             // one exercise.
             navController.navigate(RepMateDestinations.PUSHUP_WORKOUT)
         } else {
-            // Real logic, not a stub: this always resolves to CALIBRATION right now
-            // only because CalibrationGateViewModel's backing check is itself
-            // stubbed to always report false (no Room table for calibration
-            // profiles yet) -- see StubCalibrationRepository. The branch itself is
-            // real, so a chip tap for an already-calibrated exercise correctly goes
-            // straight to live_workout the moment that stub is replaced with a real
-            // query.
+            // CalibrationGateViewModel asks RoomCalibrationRepository, so this is a
+            // real per-exercise query against the calibration_profiles table: a chip
+            // tap for an already-calibrated exercise goes straight to live_workout,
+            // and only an uncalibrated one routes through CALIBRATION.
             coroutineScope.launch {
                 val destination =
                     if (calibrationGateViewModel.hasCalibrationProfile(exerciseType)) {

@@ -27,7 +27,7 @@ import javax.inject.Inject
  * theme toggle (real, backed by [ThemePreferences]), the haptic feedback and spoken rep count
  * toggles (real, backed by [WorkoutPreferences]), [ProfileUiState.sessionsCount],
  * [ProfileUiState.totalReps] and [ProfileUiState.averageScore] (real, derived from
- * [SessionRepository.recent]), and the "Friends" row, which is a static placeholder for this
+ * [SessionRepository.recent]), and the "Friends" row, which opens the Friends screen for this
  * first pass.
  */
 data class ProfileUiState(
@@ -70,7 +70,7 @@ data class ProfileUiState(
 /**
  * Backs [ProfileScreen]. The header, sign-out, the dark theme, haptic feedback and spoken rep
  * count toggles, and the three session stats (sessions, total reps, average score) are real;
- * the "Friends" row is the only remaining placeholder, per the explicit scoping for this
+ * the "Friends" row opens the Friends screen (see NavGraph's onFriendsClick), per the scoping for this
  * screen's first pass.
  */
 @HiltViewModel

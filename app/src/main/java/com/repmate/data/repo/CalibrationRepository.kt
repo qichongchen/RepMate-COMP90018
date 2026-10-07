@@ -11,9 +11,9 @@ import com.repmate.engine.ExerciseType
  * together when it changes.
  *
  * There is deliberately no implementation in this package -- see [SessionRepository]'s doc for
- * why. The current implementation, `com.repmate.data.local.StubCalibrationRepository`, is the
- * "ten-line in-memory fake" that doc describes: calibration profiles have no Room table yet, so
- * profiles saved here live only for the process's lifetime, not across an app restart.
+ * why. The implementation is `com.repmate.data.local.RoomCalibrationRepository`, bound in
+ * `RepositoryModule`: profiles live in the `calibration_profiles` table and survive an app
+ * restart.
  */
 interface CalibrationRepository {
     /** Whether [exerciseType] already has a saved calibration profile for the current user. */

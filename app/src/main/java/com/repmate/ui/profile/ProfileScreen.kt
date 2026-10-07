@@ -76,7 +76,7 @@ import java.util.Locale
  * Sections, top to bottom: stats, preferences (the three toggles), exercises ("How exercises
  * work", "Recalibrate"), safety ("Check-in alerts" toggle + emergency contact), account
  * ("Friends"), then a standalone bottom button. For this first pass everything is real except the
- * "Friends" row, the only static placeholder.
+ * "Friends" row, which opens the Friends screen.
  *
  * ## Sign out, and guests
  * For a signed-in user the bottom button is "Sign out", drawn in the error colour and gated behind
