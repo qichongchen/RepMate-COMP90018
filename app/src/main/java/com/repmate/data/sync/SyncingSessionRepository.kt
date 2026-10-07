@@ -8,10 +8,13 @@ import com.repmate.data.repo.BestWorkoutScore
 import com.repmate.data.repo.SessionRepository
 import com.repmate.data.cloud.toRoomRepScores
 import com.repmate.data.cloud.toRoomSession
-import com.repmate.data.cloud.FirestoreGhostScoreDataSource
+import com.repmate.di.ApplicationScope
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.WorkoutSession
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,8 +22,9 @@ import javax.inject.Singleton
 class SyncingSessionRepository @Inject constructor(
     private val roomRepository: RoomSessionRepository,
     private val firestoreWorkoutDataSource: FirestoreWorkoutDataSource,
-    private val firestoreGhostScoreDataSource: FirestoreGhostScoreDataSource,
     private val authRepository: AuthRepository,
+    private val localBestScoreSync: LocalBestScoreSync,
+    @ApplicationScope private val applicationScope: CoroutineScope,
 ) : SessionRepository {
 
     private companion object {
@@ -35,26 +39,21 @@ class SyncingSessionRepository @Inject constructor(
         // A cloud failure must not prevent the workout from finishing.
         val uploadResult = firestoreWorkoutDataSource.upload(session)
 
-        if (uploadResult.isSuccess) {
-            val publishResult =
-                firestoreGhostScoreDataSource.publishBestScore(session)
-
-            publishResult.onFailure { error ->
-                Log.w(
-                    TAG,
-                    "Workout ${session.id} synced but Ghost Duel score publish failed",
-                    error
-                )
-            }
-        } else {
-            uploadResult.exceptionOrNull()?.let { error ->
-                Log.w(
-                    TAG,
-                    "Workout ${session.id} saved locally but Firestore sync failed",
-                    error
-                )
-            }
+        uploadResult.exceptionOrNull()?.let { error ->
+            Log.w(
+                TAG,
+                "Workout ${session.id} saved locally but Firestore sync failed",
+                error
+            )
         }
+
+        // The only place a Ghost Duel score is published after a workout. It publishes the best
+        // *stored* session of each exercise, which includes the one just saved, and skips guests,
+        // so it covers what a publish of just this session used to and also catches up workouts
+        // finished offline. It runs whether or not the upload above worked. Launched in the
+        // application scope so the workout-finished screen does not wait on up to three Firestore
+        // round trips; it is best-effort and must never fail or slow save().
+        applicationScope.launch { republishLocalBestScores() }
     }
 
     override fun recent(limit: Int): Flow<List<WorkoutSession>> =
@@ -116,6 +115,30 @@ class SyncingSessionRepository @Inject constructor(
             "Restored $restoredCount missing workout sessions"
         )
 
+        // Restored sessions can be unpublished too, and so can ones finished offline earlier.
+        // Inline (not launched): the caller already runs restore in the background.
+        republishLocalBestScores()
+
         return Result.success(restoredCount)
+    }
+
+    /**
+     * Publishes the best local session of each exercise (see [LocalBestScoreSync]) and logs what
+     * fails. Never throws except for cancellation, so neither save() nor restore can be broken by it.
+     */
+    private suspend fun republishLocalBestScores() {
+        try {
+            localBestScoreSync.publishAll().forEach { (exercise, error) ->
+                Log.w(
+                    TAG,
+                    "Ghost Duel best score for $exercise could not be published from local history",
+                    error
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Republishing local Ghost Duel best scores failed unexpectedly", e)
+        }
     }
 }

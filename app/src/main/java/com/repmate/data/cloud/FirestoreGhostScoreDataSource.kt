@@ -3,6 +3,7 @@ package com.repmate.data.cloud
 import com.example.repmate.data.auth.AuthRepository
 import com.google.firebase.firestore.FirebaseFirestore
 import com.repmate.data.repo.BestWorkoutScore
+import com.repmate.data.sync.BestScorePublisher
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.tasks.await
@@ -20,7 +21,7 @@ internal const val SCORE_EPSILON = 1e-6
 class FirestoreGhostScoreDataSource @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val authRepository: AuthRepository
-) {
+) : BestScorePublisher {
 
     /**
      * Publishes the current user's best score for an exercise.
@@ -29,7 +30,7 @@ class FirestoreGhostScoreDataSource @Inject constructor(
      * A Firestore transaction prevents a lower score from
      * overwriting a higher score during concurrent updates.
      */
-    suspend fun publishBestScore(
+    override suspend fun publishBestScore(
         session: WorkoutSession
     ): Result<Unit> {
         val userId = authRepository.getCurrentUserId()

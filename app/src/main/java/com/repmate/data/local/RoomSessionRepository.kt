@@ -2,6 +2,7 @@ package com.repmate.data.local
 
 import com.repmate.data.repo.SessionRepository
 import com.repmate.data.repo.BestWorkoutScore
+import com.repmate.data.sync.LocalBestSessionSource
 import com.example.repmate.data.auth.AuthRepository
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
@@ -18,7 +19,7 @@ import android.util.Log
 class RoomSessionRepository @Inject constructor(
     private val sessionDao: SessionDao,
     private val authRepository: AuthRepository
-) : SessionRepository {
+) : SessionRepository, LocalBestSessionSource {
 
     override suspend fun getById(id: String): WorkoutSession? {
         val ownerId = authRepository.getCurrentUserId()
@@ -152,6 +153,21 @@ class RoomSessionRepository @Inject constructor(
                     )
                 }
         }
+    }
+
+    override suspend fun bestSessionFor(
+        exercise: ExerciseType
+    ): WorkoutSession? {
+        val ownerId = authRepository.getCurrentUserId()
+            ?: return null
+
+        val sessionId = sessionDao.getBestSessionId(
+            ownerId = ownerId,
+            exercise = exercise.name
+        ) ?: return null
+
+        // getById reads under the current owner again, so it cannot return another user's session.
+        return getById(sessionId)
     }
 
     override suspend fun getMyBestScore(

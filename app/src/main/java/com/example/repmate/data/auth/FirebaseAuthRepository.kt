@@ -28,4 +28,8 @@ class FirebaseAuthRepository @Inject constructor(
     override fun getCurrentUserId(): String? {
         return firebaseAuth.currentUser?.uid
     }
+
+    override fun isCurrentUserAnonymous(): Boolean {
+        return firebaseAuth.currentUser?.isAnonymous == true
+    }
 }
