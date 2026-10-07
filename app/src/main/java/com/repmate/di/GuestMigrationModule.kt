@@ -1,10 +1,12 @@
 package com.repmate.di
 
+import com.repmate.data.cloud.FirestoreGhostScorePublisher
 import com.repmate.data.cloud.FirestoreMigrationUploader
 import com.repmate.data.cloud.FirestoreWorkoutDataSource
 import com.repmate.data.cloud.WorkoutUploader
 import com.repmate.data.local.RoomGuestSessionStore
 import com.repmate.data.sync.DataStorePendingMigrationStore
+import com.repmate.data.sync.GhostScorePublisher
 import com.repmate.data.sync.GuestSessionStore
 import com.repmate.data.sync.MigrationUploader
 import com.repmate.data.sync.PendingMigrationStore
@@ -33,6 +35,10 @@ abstract class GuestMigrationModule {
     @Binds
     @Singleton
     abstract fun bindMigrationUploader(implementation: FirestoreMigrationUploader): MigrationUploader
+
+    @Binds
+    @Singleton
+    abstract fun bindGhostScorePublisher(implementation: FirestoreGhostScorePublisher): GhostScorePublisher
 
     @Binds
     @Singleton

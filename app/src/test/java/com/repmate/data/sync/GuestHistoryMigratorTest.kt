@@ -20,7 +20,8 @@ class GuestHistoryMigratorTest {
     private val marker = FakeMarkerStore()
     private val local = FakeGuestSessionStore()
     private val cloud = FakeUploader(auth)
-    private val migrator = GuestHistoryMigrator(marker, local, cloud, auth)
+    private val ghost = FakeGhostScorePublisher(auth)
+    private val migrator = GuestHistoryMigrator(marker, local, cloud, ghost, auth)
 
     private fun seedGuestSessions() {
         local.add(ownerId = GUEST, session = session("a", reps = 3))
@@ -296,6 +297,203 @@ class GuestHistoryMigratorTest {
             assertEquals(listOf(PendingGuestMigration(GUEST, ACCOUNT)), marker.all())
         }
 
+    // ---------------------------------------------------------------------------------------
+    // Ghost Duel best score: republished once per exercise after a merge.
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    fun publishesOnlyTheBestSessionOfEachExerciseAfterAMerge() =
+        runTest {
+            local.add(GUEST, session("squat-low", reps = 4, score = 6f))
+            local.add(GUEST, session("squat-best", reps = 2, score = 8f))
+            local.add(GUEST, session("pushup-best", reps = 3, score = 9f, exercise = ExerciseType.PUSHUP))
+            local.add(GUEST, session("pushup-low", reps = 6, score = 5f, exercise = ExerciseType.PUSHUP))
+            captureAndSignIn()
+
+            assertEquals(4, migrator.resume().getOrThrow())
+
+            // One call per exercise (not per session), each the highest average, under the account.
+            assertEquals(setOf("squat-best", "pushup-best"), ghost.publishedIds().toSet())
+            assertEquals(2, ghost.calls.size)
+            assertEquals(listOf<String?>(ACCOUNT, ACCOUNT), ghost.signedInAtCall)
+            assertEquals(listOf(ACCOUNT, ACCOUNT), ghost.targetsAtCall)
+            assertEquals(2, ghost.accepted.size)
+        }
+
+    @Test
+    fun equalAverageIsBrokenByMoreReps() =
+        runTest {
+            local.add(GUEST, session("few", reps = 2, score = 7f))
+            local.add(GUEST, session("many", reps = 5, score = 7f))
+            captureAndSignIn()
+
+            migrator.resume().getOrThrow()
+
+            assertEquals(listOf("many"), ghost.publishedIds())
+        }
+
+    @Test
+    fun equalAverageAndRepsIsBrokenByTheNewerSession() =
+        runTest {
+            local.add(GUEST, session("older", reps = 3, score = 7f, startedAt = 1_000L))
+            local.add(GUEST, session("newer", reps = 3, score = 7f, startedAt = 5_000L))
+            local.add(GUEST, session("oldest", reps = 3, score = 7f, startedAt = 500L))
+            captureAndSignIn()
+
+            migrator.resume().getOrThrow()
+
+            assertEquals(listOf("newer"), ghost.publishedIds())
+        }
+
+    @Test
+    fun aHigherAverageBeatsMoreRepsAndANewerDate() =
+        runTest {
+            local.add(GUEST, session("long-and-recent", reps = 10, score = 6f, startedAt = 9_000L))
+            local.add(GUEST, session("sharp", reps = 2, score = 8f, startedAt = 1_000L))
+            captureAndSignIn()
+
+            migrator.resume().getOrThrow()
+
+            assertEquals(listOf("sharp"), ghost.publishedIds())
+        }
+
+    @Test
+    fun publishesNothingWhenTheGuestHadNoSessions() =
+        runTest {
+            captureAndSignIn()
+
+            assertEquals(0, migrator.resume().getOrThrow())
+
+            assertTrue(ghost.calls.isEmpty())
+            assertNull(marker.get())
+        }
+
+    @Test
+    fun publishesNothingForSessionsWithNoReps() =
+        runTest {
+            local.add(GUEST, session("empty-squat", reps = 0))
+            local.add(GUEST, session("empty-pushup", reps = 0, exercise = ExerciseType.PUSHUP))
+            captureAndSignIn()
+
+            assertEquals(2, migrator.resume().getOrThrow())
+
+            // Still merged (see zeroRepSessionsAreMergedToo), just never offered as a best score.
+            assertEquals(setOf("empty-squat", "empty-pushup"), local.idsOwnedBy(ACCOUNT))
+            assertTrue(ghost.calls.isEmpty())
+        }
+
+    @Test
+    fun anExerciseWithOnlyZeroRepSessionsIsSkippedWhileTheOtherIsPublished() =
+        runTest {
+            local.add(GUEST, session("empty-squat", reps = 0))
+            local.add(GUEST, session("pushups", reps = 3, exercise = ExerciseType.PUSHUP))
+            captureAndSignIn()
+
+            migrator.resume().getOrThrow()
+
+            assertEquals(listOf("pushups"), ghost.publishedIds())
+        }
+
+    @Test
+    fun aPublishFailureDoesNotFailTheMerge() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+            ghost.result = Result.failure(RuntimeException("offline"))
+
+            assertEquals(2, migrator.resume().getOrThrow())
+
+            assertEquals(2, ghost.calls.size)
+            assertEquals(setOf("a", "b"), local.idsOwnedBy(ACCOUNT))
+            assertEquals(emptySet<String>(), local.idsOwnedBy(GUEST))
+            assertNull(marker.get())
+        }
+
+    @Test
+    fun aThrowingPublisherDoesNotFailTheMergeOrSkipTheOtherExercise() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+            ghost.throwable = IllegalStateException("boom")
+
+            assertEquals(2, migrator.resume().getOrThrow())
+
+            // Both exercises were still attempted, and the merge completed regardless.
+            assertEquals(2, ghost.calls.size)
+            assertEquals(setOf("a", "b"), local.idsOwnedBy(ACCOUNT))
+            assertEquals(emptySet<String>(), local.idsOwnedBy(GUEST))
+            assertNull(marker.get())
+        }
+
+    @Test
+    fun aUserChangeBetweenTheUploadsAndThePublishPublishesNothingUnderTheOtherAccount() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+            // The last upload lands in ACCOUNT, then another account becomes the signed-in one
+            // before the publish step runs.
+            cloud.afterUpload = { if (it.id == "b") auth.uid = "other-account" }
+
+            assertEquals(2, migrator.resume().getOrThrow())
+
+            // Attempted for the merge's own target, but refused, so nothing reached any account.
+            assertEquals(listOf(ACCOUNT, ACCOUNT), ghost.targetsAtCall)
+            assertEquals(listOf<String?>("other-account", "other-account"), ghost.signedInAtCall)
+            assertTrue(ghost.accepted.isEmpty())
+            // The merge itself still completed.
+            assertEquals(setOf("a", "b"), local.idsOwnedBy(ACCOUNT))
+            assertEquals(emptySet<String>(), local.idsOwnedBy(GUEST))
+            assertEquals(setOf("a", "b"), cloud.documentIds(ACCOUNT))
+            assertNull(marker.get())
+        }
+
+    @Test
+    fun theUserSigningOutBeforeThePublishAlsoPublishesNothing() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+            cloud.afterUpload = { if (it.id == "b") auth.uid = null }
+
+            assertEquals(2, migrator.resume().getOrThrow())
+
+            assertTrue(ghost.accepted.isEmpty())
+            assertEquals(setOf("a", "b"), local.idsOwnedBy(ACCOUNT))
+            assertNull(marker.get())
+        }
+
+    @Test
+    fun noPublishHappensWhenAnUploadFails() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+            cloud.failOnSessionId = "b"
+
+            assertTrue(migrator.resume().isFailure)
+
+            // All-or-nothing is unchanged: nothing re-owned, entry kept, and no score published
+            // for sessions that are not (all) in the account yet.
+            assertTrue(ghost.calls.isEmpty())
+            assertEquals(setOf("a", "b"), local.idsOwnedBy(GUEST))
+            assertEquals(PendingGuestMigration(GUEST, ACCOUNT), marker.get())
+        }
+
+    @Test
+    fun aRetryAfterAFailedUploadPublishesOncePerExercise() =
+        runTest {
+            seedGuestSessions()
+            captureAndSignIn()
+            cloud.failOnSessionId = "b"
+            assertTrue(migrator.resume().isFailure)
+            assertTrue(ghost.calls.isEmpty())
+
+            cloud.failOnSessionId = null
+            assertEquals(2, migrator.resume().getOrThrow())
+
+            assertEquals(setOf("a", "b"), ghost.publishedIds().toSet())
+            assertEquals(2, ghost.calls.size)
+            assertNull(marker.get())
+        }
+
     private companion object {
         const val GUEST = "guest-uid"
         const val SECOND_GUEST = "second-guest-uid"
@@ -305,16 +503,18 @@ class GuestHistoryMigratorTest {
             id: String,
             reps: Int,
             exercise: ExerciseType = ExerciseType.SQUAT,
+            score: Float = 7.5f,
+            startedAt: Long = 1_000L,
         ) = WorkoutSession(
             id = id,
             exercise = exercise,
-            startedAt = 1_000L,
-            endedAt = 2_000L,
+            startedAt = startedAt,
+            endedAt = startedAt + 1_000L,
             reps =
                 List(reps) { index ->
                     RepScore(
                         repIndex = index + 1,
-                        score = 7.5f,
+                        score = score,
                         tempoSeconds = 1.5f,
                         rangePercent = 90,
                         pauseSeconds = 0f,
@@ -389,6 +589,9 @@ private class FakeUploader(
 ) : MigrationUploader {
     var failOnSessionId: String? = null
     var uploadAttempts = 0
+
+    /** Runs after each successful upload; lets a test change the signed-in user mid-merge. */
+    var afterUpload: (WorkoutSession) -> Unit = {}
     private val documents = mutableMapOf<Pair<String, String>, WorkoutSession>()
 
     fun documentIds(uid: String): Set<String> = documents.keys.filter { it.first == uid }.map { it.second }.toSet()
@@ -403,6 +606,42 @@ private class FakeUploader(
         if (auth.uid != targetUid) return Result.failure(IllegalStateException("not the signed-in user"))
         if (session.id == failOnSessionId) return Result.failure(RuntimeException("offline"))
         documents[targetUid to session.id] = session
+        afterUpload(session)
         return Result.success(Unit)
+    }
+}
+
+/**
+ * Records every publish call, and mirrors the real adapter's guard: it refuses unless the
+ * signed-in user is the `targetUid` it was given, at the moment of the call. [calls] holds every
+ * attempt; [accepted] only the ones that got past that guard (what would reach Firestore, and
+ * under which uid).
+ *
+ * Set [result] to make it return a failure, or [throwable] to make it throw; the call is recorded
+ * first either way, so a test can tell that it was attempted.
+ */
+private class FakeGhostScorePublisher(
+    private val auth: FakeAuth,
+) : GhostScorePublisher {
+    val calls = mutableListOf<WorkoutSession>()
+    val targetsAtCall = mutableListOf<String>()
+    val signedInAtCall = mutableListOf<String?>()
+    val accepted = mutableListOf<Pair<String, WorkoutSession>>()
+    var result: Result<Unit> = Result.success(Unit)
+    var throwable: Throwable? = null
+
+    fun publishedIds(): List<String> = calls.map { it.id }
+
+    override suspend fun publish(
+        session: WorkoutSession,
+        targetUid: String,
+    ): Result<Unit> {
+        calls += session
+        targetsAtCall += targetUid
+        signedInAtCall += auth.uid
+        throwable?.let { throw it }
+        if (auth.uid != targetUid) return Result.failure(IllegalStateException("not the signed-in user"))
+        accepted += targetUid to session
+        return result
     }
 }

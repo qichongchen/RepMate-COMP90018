@@ -10,7 +10,11 @@ import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val SCORE_EPSILON = 1e-6
+/**
+ * Averages closer than this count as equal. Shared with the guest migrator, which must pick the
+ * same "best" session the store would keep.
+ */
+internal const val SCORE_EPSILON = 1e-6
 
 @Singleton
 class FirestoreGhostScoreDataSource @Inject constructor(
