@@ -1,6 +1,5 @@
 package com.repmate.ui.history
 
-import androidx.compose.foundation.Canvas
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.engine.RepScore
+import com.repmate.ui.components.AxesCanvas
+import com.repmate.ui.components.AxisTick
+import com.repmate.ui.components.ChartAxes
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
@@ -434,19 +437,28 @@ private fun ScoreTrendChart(
 
     val scoreColor = MaterialTheme.colorScheme.primary
     val depthColor = MaterialTheme.colorScheme.tertiary
-    val axisColor = MaterialTheme.colorScheme.outlineVariant
+
+    // Labels use the same "Rep N" numbering as the per-rep list below the chart (repIndex + 1).
+    val axes =
+        remember(reps) {
+            ChartAxes(
+                xCaption = "rep",
+                yCaption = "score",
+                xTicks = reps.mapIndexed { index, rep -> AxisTick(index.toFloat() / (reps.size - 1), "${rep.repIndex + 1}") },
+                yTicks = listOf(AxisTick(0f, "0"), AxisTick(0.5f, "5"), AxisTick(1f, "10")),
+                yGridFractions = listOf(0.5f),
+            )
+        }
 
     Column(modifier = modifier) {
-        Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+        // The plot is exactly 120.dp tall; AxesCanvas adds room for the labels around it.
+        AxesCanvas(axes = axes, modifier = Modifier.fillMaxWidth(), plotHeight = 120.dp) {
             val valueMin = 0f
             val valueMax = 10f
             val valueSpan = valueMax - valueMin
 
             fun xFor(index: Int): Float = (index.toFloat() / (reps.size - 1)) * size.width
             fun yFor(value: Float): Float = size.height - ((value - valueMin) / valueSpan) * size.height
-
-            drawLine(axisColor, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
-            drawLine(axisColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
 
             val scorePath =
                 Path().apply {
@@ -539,6 +551,22 @@ private val PREVIEW_STATE =
 
 private val POST_WORKOUT_STATE = PREVIEW_STATE.copy(postWorkout = true, safetyCheckInMinutes = 5)
 
+/** 25 reps, so the x-axis has to thin its rep labels; rep 10 has no measurable depth (breaks the dashed line). */
+private val MANY_REPS_STATE =
+    PREVIEW_STATE.copy(
+        repCount = 25,
+        reps = List(25) { i ->
+            RepScore(
+                repIndex = i,
+                score = (7.5f + 2f * kotlin.math.sin(i / 3f)).coerceIn(0f, 10f),
+                tempoSeconds = 1.5f,
+                rangePercent = if (i == 9) -1 else 70 + (i * 7) % 30,
+                pauseSeconds = 0.2f,
+                reasons = listOf("good depth"),
+            )
+        },
+    )
+
 private val PUSHUP_STATE =
     SessionDetailUiState(
         exercise = "Push-up",
@@ -575,6 +603,14 @@ private fun SessionDetailLightPreview() = PreviewContent(PREVIEW_STATE)
 @Preview(name = "Session Detail - Dark", showBackground = true, backgroundColor = 0xFF121212, widthDp = 360, heightDp = 780)
 @Composable
 private fun SessionDetailDarkPreview() = PreviewContent(PREVIEW_STATE, darkTheme = true)
+
+@Preview(name = "Session Detail (25 reps) - Light", showBackground = true, backgroundColor = 0xFFFAFAFA, widthDp = 360, heightDp = 780)
+@Composable
+private fun SessionDetailManyRepsLightPreview() = PreviewContent(MANY_REPS_STATE)
+
+@Preview(name = "Session Detail (25 reps) - Dark", showBackground = true, backgroundColor = 0xFF121212, widthDp = 360, heightDp = 780)
+@Composable
+private fun SessionDetailManyRepsDarkPreview() = PreviewContent(MANY_REPS_STATE, darkTheme = true)
 
 @Preview(name = "Post-workout (squat) - Light", showBackground = true, backgroundColor = 0xFFFAFAFA, widthDp = 360, heightDp = 780)
 @Composable

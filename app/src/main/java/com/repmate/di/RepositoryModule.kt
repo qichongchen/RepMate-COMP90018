@@ -5,6 +5,9 @@ import com.repmate.data.local.RoomCalibrationRepository
 import com.repmate.data.repo.CalibrationRepository
 import com.repmate.data.repo.SessionRepository
 import com.repmate.data.sync.SyncingSessionRepository
+import com.repmate.data.sync.BestScorePublisher
+import com.repmate.data.sync.LocalBestSessionSource
+import com.repmate.data.cloud.FirestoreGhostScoreDataSource
 import com.repmate.data.cloud.FirestoreLeaderboardRepository
 import com.repmate.data.repo.LeaderboardRepository
 import com.repmate.data.cloud.FirestoreFriendRepository
@@ -26,6 +29,18 @@ abstract class RepositoryModule {
     abstract fun bindSessionRepository(
         implementation: SyncingSessionRepository
     ): SessionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLocalBestSessionSource(
+        implementation: RoomSessionRepository
+    ): LocalBestSessionSource
+
+    @Binds
+    @Singleton
+    abstract fun bindBestScorePublisher(
+        implementation: FirestoreGhostScoreDataSource
+    ): BestScorePublisher
 
     @Binds
     @Singleton

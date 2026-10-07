@@ -1,6 +1,7 @@
 package com.repmate.data.sync
 
 import com.example.repmate.data.auth.AuthRepository
+import com.repmate.data.cloud.SCORE_EPSILON
 import com.repmate.engine.WorkoutSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -24,14 +25,31 @@ import javax.inject.Singleton
  * 3. [resume] -- **upload, then re-own, then forget**:
  *    a. upload every guest session (including 0-rep ones: still the user's exercise data) to the target
  *    account (`set`, an upsert);
- *    b. only if *every* upload succeeded, re-own those sessions in Room;
- *    c. only then drop that guest's entry.
+ *    b. only if *every* upload succeeded, republish the account's Ghost Duel best score (below);
+ *    c. then re-own those sessions in Room;
+ *    d. only then drop that guest's entry.
  *
  * Re-owning is the last local step because `workout_sessions` is keyed by `id` alone: once a row
  * is re-owned it no longer shows up as the guest's, so it could never be found and uploaded on a
  * retry. Uploading first means any failure leaves every session with the guest, the entry intact,
  * and the whole thing is safely repeatable: repeat uploads just overwrite, and re-owning a
  * session that already moved matches nothing.
+ *
+ * ## Ghost Duel best score
+ * Sessions that arrive through a merge never pass through `SyncingSessionRepository.save`, which
+ * is the only other place a best score is published, so the merge publishes it itself:
+ * - **Best session per exercise, once per exercise**, not once per session. Sessions with no reps
+ *   are ignored. "Best" is the order the store itself uses: higher average rep score, then more
+ *   reps, then the newer `startedAt`.
+ * - **Best-effort.** A failed or throwing publish is ignored here (the publisher logs it): the
+ *   sessions are already safe in the account's Firestore, so a missing Ghost Duel score must not
+ *   leave them stranded with the guest or keep the entry alive.
+ * - **Safe to repeat.** It runs before the re-own and the entry removal, so if the app dies in
+ *   between, the next [resume] runs this merge again with the same sessions and publishes again.
+ *   The store only overwrites a score with a better one, so the repeat changes nothing.
+ * - **Right account only.** [resume] checks the signed-in user is the merge target once, up front,
+ *   but the user can change while the merge runs. So the target uid is passed to the publisher,
+ *   which re-checks it at the moment of the call and refuses otherwise (as the uploader does).
  *
  * ## More than one pending merge at a time
  * [PendingMigrationStore] keeps every unfinished merge, not only the latest. A guest who logs in
@@ -50,9 +68,6 @@ import javax.inject.Singleton
  *   user touch their own documents. The merge reads the **Room** copy for that same reason: a
  *   guest's cloud documents are unreachable once the guest is gone, and no rule should be widened
  *   to reach them, so a session that exists only in Firestore is not recovered.
- * - TODO(ghost-duel): the account's Ghost Duel best score is not republished after a merge.
- *   `publishBestScore` became reachable with normal workout sync in #48; wire it in here too, for
- *   each exercise with reps.
  *
  * All calls are serialised by a mutex, so a resume at app start and one right after sign-in
  * can never run the merge concurrently.
@@ -64,6 +79,7 @@ class GuestHistoryMigrator
         private val markerStore: PendingMigrationStore,
         private val guestSessions: GuestSessionStore,
         private val uploader: MigrationUploader,
+        private val ghostScores: GhostScorePublisher,
         private val authRepository: AuthRepository,
     ) {
         private val mutex = Mutex()
@@ -167,8 +183,66 @@ class GuestHistoryMigrator
                     return Result.failure(uploaded.exceptionOrNull() ?: IllegalStateException("Upload failed"))
                 }
             }
+            // After every upload, before re-owning and clearing the entry: see "Ghost Duel best
+            // score" in the class comment for why that placement makes a retry safe.
+            publishBestScores(toMerge, targetUid)
             guestSessions.reassignOwner(toMerge.map { it.id }, guestUid, targetUid)
             markerStore.remove(guestUid)
             return Result.success(toMerge.size)
         }
+
+        /**
+         * Publishes the best session of each exercise in [sessions], one call per exercise.
+         *
+         * Best-effort by design: neither a failed [Result] nor an exception escapes, so the merge
+         * carries on to re-owning and clearing the entry. Only cancellation is rethrown, because
+         * swallowing it would keep a cancelled coroutine running. Each exercise is attempted on
+         * its own, so one failure does not skip the others.
+         *
+         * [targetUid] goes to the publisher, which refuses unless that account is still the
+         * signed-in one when it runs.
+         */
+        private suspend fun publishBestScores(
+            sessions: List<WorkoutSession>,
+            targetUid: String,
+        ) {
+            val bestPerExercise =
+                sessions
+                    .filter { it.reps.isNotEmpty() }
+                    .groupBy { it.exercise }
+                    .mapValues { (_, group) -> group.reduce { best, next -> if (next.isBetterThan(best)) next else best } }
+
+            for (best in bestPerExercise.values) {
+                try {
+                    // The returned Result is deliberately not inspected: the publisher has already
+                    // logged any failure, and a failure must not change what the merge does next.
+                    ghostScores.publish(best, targetUid)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Safety net only: a well-behaved publisher returns a failed Result and logs it
+                    // itself. Not logged here so this class never touches android.util.Log, which
+                    // would throw in the JVM tests; the merge must go on either way.
+                }
+            }
+        }
+
+        /**
+         * True when this session should replace [other] as an exercise's best score. Mirrors the
+         * rule `FirestoreGhostScoreDataSource.publishBestScore` applies to the stored score
+         * (higher average, then more reps, then newer), so the session we pick is the one the
+         * store would keep anyway. Both sessions must have reps.
+         */
+        private fun WorkoutSession.isBetterThan(other: WorkoutSession): Boolean {
+            val difference = averageScore() - other.averageScore()
+            return when {
+                difference > SCORE_EPSILON -> true
+                difference < -SCORE_EPSILON -> false
+                reps.size != other.reps.size -> reps.size > other.reps.size
+                else -> startedAt > other.startedAt
+            }
+        }
+
+        private fun WorkoutSession.averageScore(): Double = reps.map { it.score.toDouble() }.average()
+
     }

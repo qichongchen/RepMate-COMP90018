@@ -57,7 +57,7 @@ class FirestoreWorkoutSessionTest {
             reps = listOf(
                 FirestoreRepScore(
                     repIndex = 0,
-                    score = 80,
+                    score = 80f,
                     tempoSeconds = 2.5,
                     rangePercent = 90.0,
                     pauseSeconds = 0.5,

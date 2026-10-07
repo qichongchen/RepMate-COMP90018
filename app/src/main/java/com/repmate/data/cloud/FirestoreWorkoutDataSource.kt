@@ -107,45 +107,7 @@ class FirestoreWorkoutDataSource @Inject constructor(
                         document.get("reps") as? List<*>
                             ?: emptyList<Any>()
 
-                    val reps = rawReps.mapNotNull repLoop@{ rawRep ->
-                        val repMap =
-                            rawRep as? Map<*, *>
-                                ?: return@repLoop null
-
-                        val repIndex =
-                            (repMap["repIndex"] as? Number)?.toInt()
-                                ?: return@repLoop null
-
-                        val score =
-                            (repMap["score"] as? Number)?.toInt()
-                                ?: return@repLoop null
-
-                        val tempoSeconds =
-                            (repMap["tempoSeconds"] as? Number)?.toDouble()
-                                ?: 0.0
-
-                        val rangePercent =
-                            (repMap["rangePercent"] as? Number)?.toDouble()
-                                ?: 0.0
-
-                        val pauseSeconds =
-                            (repMap["pauseSeconds"] as? Number)?.toDouble()
-                                ?: 0.0
-
-                        val reasons =
-                            (repMap["reasons"] as? List<*>)
-                                ?.filterIsInstance<String>()
-                                ?: emptyList()
-
-                        FirestoreRepScore(
-                            repIndex = repIndex,
-                            score = score,
-                            tempoSeconds = tempoSeconds,
-                            rangePercent = rangePercent,
-                            pauseSeconds = pauseSeconds,
-                            reasons = reasons,
-                        )
-                    }
+                    val reps = rawReps.mapNotNull(::parseFirestoreRepScore)
 
                     FirestoreWorkoutSession(
                         id = id,

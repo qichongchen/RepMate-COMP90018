@@ -1,6 +1,5 @@
 package com.repmate.ui.motionreplay
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -30,11 +29,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -44,9 +43,16 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.RepScore
+import com.repmate.ui.components.AxesCanvas
+import com.repmate.ui.components.AxisTick
+import com.repmate.ui.components.ChartAxes
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateCard
 import com.repmate.ui.components.displayLabel
+import com.repmate.ui.components.formatAxisValue
+import com.repmate.ui.components.formatTimeTick
+import com.repmate.ui.components.timeTickMillis
+import com.repmate.ui.components.timeTickStepMs
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
 
@@ -305,7 +311,7 @@ private fun CalibratedReplayBody(
             AccelerometerCurveChart(
                 curve = rep.curve,
                 band = rep.calibrationBand,
-                modifier = Modifier.fillMaxWidth().height(120.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         MetricsCard {
@@ -461,6 +467,17 @@ private fun CalibrateNowCard(
  * [curve] is already rebased onto the rep's own timeline ([rebaseCurve] -- x starts at 0), with
  * [band] shaded behind it. Fewer than two samples can't draw a line, so that case shows a short
  * explanatory label instead of an empty canvas -- degrade gracefully rather than render nothing.
+ *
+ * ## Axes
+ * - x is time in seconds from the rep's start: 3-4 round ticks chosen from the rep's duration
+ *   ([timeTickMillis]).
+ * - y is the smoothed acceleration magnitude, labelled at the bottom and top of the plotted range
+ *   (the curve and the band together). The unit is m/s^2: the value is the detector's smoothed
+ *   `sqrt(ax^2 + ay^2 + az^2)` of `Sensor.TYPE_ACCELEROMETER`, which reports total acceleration
+ *   in m/s^2 *including* gravity, so a phone at rest reads about 9.8. The shaded band is anchored
+ *   to this rep's own minimum, not to an absolute level (see [calibrationBand]).
+ *
+ * The plot is 120.dp tall; the axis labels add height around it.
  */
 @Composable
 private fun AccelerometerCurveChart(
@@ -469,7 +486,7 @@ private fun AccelerometerCurveChart(
     modifier: Modifier = Modifier,
 ) {
     if (curve.size < 2) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Box(modifier = modifier.height(120.dp), contentAlignment = Alignment.Center) {
             Text(
                 text = "Not enough motion data to draw a curve.",
                 style = MaterialTheme.typography.bodySmall,
@@ -481,44 +498,67 @@ private fun AccelerometerCurveChart(
 
     val curveColor = MaterialTheme.colorScheme.onBackground
     val bandColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-    val axisColor = MaterialTheme.colorScheme.outlineVariant
 
-    Canvas(modifier = modifier) {
-        val minT = curve.first().first
-        val maxT = curve.last().first
-        val tSpan = (maxT - minT).coerceAtLeast(1L).toFloat()
+    val minT = curve.first().first
+    val maxT = curve.last().first
+    val tSpan = (maxT - minT).coerceAtLeast(1L).toFloat()
 
-        val curveMin = curve.minOf { it.second }
-        val curveMax = curve.maxOf { it.second }
-        val valueMin = minOf(curveMin, band.start)
-        val valueMax = maxOf(curveMax, band.endInclusive)
-        val valueSpan = (valueMax - valueMin).coerceAtLeast(0.001f)
+    val valueMin = minOf(curve.minOf { it.second }, band.start)
+    val valueMax = maxOf(curve.maxOf { it.second }, band.endInclusive)
+    val valueSpan = (valueMax - valueMin).coerceAtLeast(0.001f)
 
-        fun xFor(tMillis: Long): Float = ((tMillis - minT) / tSpan) * size.width
-        fun yFor(value: Float): Float = size.height - ((value - valueMin) / valueSpan) * size.height
+    val axes =
+        remember(curve, band) {
+            val durationMs = (maxT - minT).coerceAtLeast(1L)
+            val stepMs = timeTickStepMs(durationMs)
+            ChartAxes(
+                xCaption = "time (s)",
+                yCaption = "acceleration (m/s²)",
+                xTicks = timeTickMillis(durationMs).map { AxisTick(it / tSpan, formatTimeTick(it, stepMs)) },
+                yTicks = listOf(AxisTick(0f, formatAxisValue(valueMin)), AxisTick(1f, formatAxisValue(valueMax))),
+            )
+        }
 
-        drawLine(axisColor, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
-        drawLine(axisColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
+    Column(modifier = modifier) {
+        AxesCanvas(axes = axes, modifier = Modifier.fillMaxWidth(), plotHeight = 120.dp) {
+            fun xFor(tMillis: Long): Float = ((tMillis - minT) / tSpan) * size.width
+            fun yFor(value: Float): Float = size.height - ((value - valueMin) / valueSpan) * size.height
 
-        val bandPath =
-            Path().apply {
-                moveTo(0f, yFor(band.endInclusive))
-                lineTo(size.width, yFor(band.endInclusive))
-                lineTo(size.width, yFor(band.start))
-                lineTo(0f, yFor(band.start))
-                close()
-            }
-        drawPath(bandPath, color = bandColor)
-
-        val curvePath =
-            Path().apply {
-                curve.forEachIndexed { index, (t, value) ->
-                    val x = xFor(t)
-                    val y = yFor(value)
-                    if (index == 0) moveTo(x, y) else lineTo(x, y)
+            val bandPath =
+                Path().apply {
+                    moveTo(0f, yFor(band.endInclusive))
+                    lineTo(size.width, yFor(band.endInclusive))
+                    lineTo(size.width, yFor(band.start))
+                    lineTo(0f, yFor(band.start))
+                    close()
                 }
-            }
-        drawPath(curvePath, color = curveColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            drawPath(bandPath, color = bandColor)
+
+            val curvePath =
+                Path().apply {
+                    curve.forEachIndexed { index, (t, value) ->
+                        val x = xFor(t)
+                        val y = yFor(value)
+                        if (index == 0) moveTo(x, y) else lineTo(x, y)
+                    }
+                }
+            drawPath(curvePath, color = curveColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Key for the shaded band; the curve itself is named by the card's title.
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(width = 14.dp, height = 8.dp)
+                        .background(bandColor)
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+            )
+            Spacer(modifier = Modifier.size(6.dp))
+            Text(text = "your calibration range", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
