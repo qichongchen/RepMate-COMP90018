@@ -76,14 +76,14 @@ class SessionReplayer(
      */
     fun replay(session: WorkoutSession, profile: CalibrationProfile?): ReplayedSession? {
         val frames = session.frames ?: return null
+        val detector = detectorFor(session.exercise, profile) ?: return null
 
-        val detector = SquatRepDetector(profile)
         val allSamples = mutableListOf<SmoothedSample>()
         val events = mutableListOf<RepEvent>()
 
         for (frame in frames) {
             val completedRep = detector.process(frame)
-            allSamples += SmoothedSample(frame.tMillis, detector.smoothedMagnitude)
+            allSamples += SmoothedSample(frame.tMillis, detector.smoothedMagnitude())
             if (completedRep != null) events += completedRep
         }
 
@@ -99,4 +99,53 @@ class SessionReplayer(
 
         return ReplayedSession(session, replayedReps)
     }
+
+    /**
+     * The detector that counted [exercise] live, so a replay re-derives the very same reps.
+     *
+     * Closures over one detector instance rather than three fields and a branch per frame, the
+     * same shape `LiveWorkoutViewModel.bindDetector` uses -- and for the same reason: the two
+     * accessors can never end up referring to different exercises.
+     *
+     * - [ExerciseType.SQUAT] and [ExerciseType.JUMPING_JACK] both read the same smoothed
+     *   acceleration magnitude (see [JumpingJackRepDetector.smoothedMagnitude], which reuses the
+     *   squat detector's 250 ms filter and trigger), so one curve shape serves both. A jumping
+     *   jack's rep window spans a *pair* of impacts, so its curve shows two spikes where a squat
+     *   shows one dip and rise -- that is the movement, not a defect.
+     * - [JumpingJackRepDetector] takes no calibration profile, exactly as the live workout
+     *   constructs it. The profile still reaches [FormScorer] below, so replayed scores match the
+     *   live ones either way.
+     * - [ExerciseType.PUSHUP] returns null: push-ups are counted from the camera, and the IMU
+     *   frames recorded alongside them describe a phone that is deliberately held still, so there
+     *   is no movement in them to replay. Callers fall back to showing the saved scores.
+     */
+    private fun detectorFor(
+        exercise: ExerciseType,
+        profile: CalibrationProfile?
+    ): ReplayDetector? =
+        when (exercise) {
+            ExerciseType.SQUAT ->
+                SquatRepDetector(profile).let { detector ->
+                    ReplayDetector(
+                        process = { frame -> detector.process(frame) },
+                        smoothedMagnitude = { detector.smoothedMagnitude }
+                    )
+                }
+
+            ExerciseType.JUMPING_JACK ->
+                JumpingJackRepDetector().let { detector ->
+                    ReplayDetector(
+                        process = { frame -> detector.process(frame) },
+                        smoothedMagnitude = { detector.smoothedMagnitude }
+                    )
+                }
+
+            ExerciseType.PUSHUP -> null
+        }
+
+    /** One exercise's detector, reduced to what a replay needs from it. */
+    private class ReplayDetector(
+        val process: (MotionFrame) -> RepEvent?,
+        val smoothedMagnitude: () -> Float
+    )
 }

@@ -225,15 +225,15 @@ class LiveWorkoutViewModel
         }
 
         /**
-         * Keeps [frame] for the replay of this set, for squats only and only up to
-         * [MAX_REPLAY_FRAMES].
+         * Keeps [frame] for the replay of this set, up to [MAX_REPLAY_FRAMES].
          *
          * At the cap it stops capturing rather than dropping the oldest frames: keeping the
          * **start** of the set means the replay's rep 1 is the set's rep 1, so a long set replays
          * its first reps instead of an unlabelled window out of the middle.
          */
         private fun captureForReplay(frame: MotionFrame) {
-            if (activeExerciseType != ExerciseType.SQUAT) return
+            // Both IMU exercises replay; the store refuses anything SessionReplayer cannot handle.
+            if (!JustFinishedSessionStore.canReplay(activeExerciseType)) return
             if (replayFrames.size >= MAX_REPLAY_FRAMES) {
                 if (!replayFramesTruncated) {
                     replayFramesTruncated = true

@@ -22,6 +22,8 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -128,13 +130,28 @@ class MotionReplayViewModelTest {
         }
 
     @Test
-    fun aNonSquatSetIsNeverRememberedForReplay() =
+    fun theStoreKeepsBothImuExercisesAndRefusesPushUps() {
+        // Squats and jumping jacks both replay: SessionReplayer picks the detector that counted
+        // the set, and both read the same smoothed magnitude. Push-ups are counted from the
+        // camera and their frames describe a phone held still, so there is nothing to replay.
+        store.remember(squatSession(SESSION_ID, withFrames = true))
+        assertNotNull(store.sessionFor(SESSION_ID))
+
+        store.clear()
+        store.remember(squatSession(SESSION_ID, withFrames = true, exercise = ExerciseType.JUMPING_JACK))
+        assertNotNull(store.sessionFor(SESSION_ID))
+
+        store.clear()
+        store.remember(squatSession(SESSION_ID, withFrames = true, exercise = ExerciseType.PUSHUP))
+        assertNull(store.sessionFor(SESSION_ID))
+    }
+
+    @Test
+    fun aPushUpSetFallsBackToTheNoReplayState() =
         runTest {
             Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-            // The replayer derives rep windows with the squat detector, so a jumping-jack set
-            // would be cut up by the wrong detector. The store refuses it.
-            store.remember(squatSession(SESSION_ID, withFrames = true).copy(exercise = ExerciseType.JUMPING_JACK))
-            sessions.stored = squatSession(SESSION_ID, withFrames = false)
+            store.remember(squatSession(SESSION_ID, withFrames = true, exercise = ExerciseType.PUSHUP))
+            sessions.stored = squatSession(SESSION_ID, withFrames = false, exercise = ExerciseType.PUSHUP)
 
             assertFalse(replayStateFor(SESSION_ID).isReplayAvailable)
         }
@@ -171,9 +188,10 @@ class MotionReplayViewModelTest {
         fun squatSession(
             id: String,
             withFrames: Boolean,
+            exercise: ExerciseType = ExerciseType.SQUAT,
         ) = WorkoutSession(
             id = id,
-            exercise = ExerciseType.SQUAT,
+            exercise = exercise,
             startedAt = 1_000L,
             endedAt = 2_000L,
             reps =

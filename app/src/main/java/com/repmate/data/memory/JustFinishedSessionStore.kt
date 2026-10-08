@@ -22,12 +22,12 @@ import javax.inject.Singleton
  * ## What it holds, and for how long
  * - **One slot.** Only the latest finished session. Reviewing an older session from History still
  *   shows the honest no-replay notice, which is the documented scope: *just-finished* replay only.
- * - **Squats only.** [com.repmate.engine.SessionReplayer] re-derives rep windows with
- *   [com.repmate.engine.SquatRepDetector] specifically, so handing it a jumping-jack session
- *   would produce a curve cut up by the wrong detector, and a push-up session carries no body
- *   motion at all (the phone is deliberately still -- see `PhoneStabilityGate`). Both keep the
- *   no-replay notice instead of a misleading picture. [remember] enforces this rather than
- *   trusting callers.
+ * - **The two IMU exercises only.** [com.repmate.engine.SessionReplayer] re-derives rep windows
+ *   with the detector that counted the set, and both the squat and jumping-jack detectors read
+ *   the same smoothed acceleration magnitude, so one curve serves both. A push-up set carries no
+ *   body motion at all -- it is counted from the camera and the phone is deliberately held still
+ *   (see `PhoneStabilityGate`) -- so it keeps the no-replay notice. [canReplay] is the single
+ *   place that decides, and [remember] enforces it rather than trusting callers.
  * - **Cleared when the next workout starts**, so a set's frames are not held for the life of the
  *   process. Surviving process death is explicitly not a goal: the session is in Room either way,
  *   it just replays without a curve.
@@ -46,11 +46,12 @@ class JustFinishedSessionStore
         /**
          * Remembers [session] as the one to replay, replacing whatever was held.
          *
-         * Ignored unless the session is a squat with frames, so the caller cannot accidentally
-         * make the replay screen draw a curve derived by the wrong detector.
+         * Ignored unless the exercise is one [canReplay] accepts and the session actually carries
+         * frames, so a caller cannot make the replay screen draw a curve the replayer could not
+         * have produced.
          */
         fun remember(session: WorkoutSession) {
-            if (session.exercise != ExerciseType.SQUAT) return
+            if (!canReplay(session.exercise)) return
             if (session.frames.isNullOrEmpty()) return
             stored = session
         }
@@ -61,5 +62,17 @@ class JustFinishedSessionStore
         /** Drops the stored session and its frames. Called when a new workout starts. */
         fun clear() {
             stored = null
+        }
+
+        companion object {
+            /**
+             * Whether a finished [exerciseType] can be replayed from its frames.
+             *
+             * True for the IMU exercises, false for [ExerciseType.PUSHUP], which is counted from
+             * the camera: its recorded frames describe a stationary propped-up phone, not the
+             * movement. Keeping the rule here means the capture in `LiveWorkoutViewModel`, the
+             * store and `SessionReplayer` cannot disagree about it.
+             */
+            fun canReplay(exerciseType: ExerciseType): Boolean = exerciseType != ExerciseType.PUSHUP
         }
     }
