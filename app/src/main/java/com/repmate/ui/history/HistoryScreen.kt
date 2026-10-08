@@ -160,11 +160,20 @@ private fun HistorySessionCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Same heavier display-weight treatment Home's LastSessionCard reserves for a
                 // highlighted stat number, in the accent color.
+                // A session with no reps has no score: averageScore() returns 0 for it, and
+                // showing a bold accent "0.0" reads as a terrible score rather than "nothing was
+                // counted". Those sessions show a dash in the muted colour instead.
+                val hasScore = session.repCount > 0
                 Text(
-                    text = String.format(Locale.US, "%.1f", session.averageScore),
+                    text = if (hasScore) String.format(Locale.US, "%.1f", session.averageScore) else "–",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color =
+                        if (hasScore) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                 )
                 // Same forward-entry-point treatment as Home's GhostDuelBanner arrow: tapping
                 // this row is the same kind of "go forward" affordance.

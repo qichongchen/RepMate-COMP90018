@@ -50,6 +50,7 @@ import com.repmate.ui.components.ChartAxes
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateButtonVariant
 import com.repmate.ui.components.RepMateCard
+import com.repmate.ui.components.RepMateTopBar
 import com.repmate.ui.theme.RepMateTheme
 import java.util.Locale
 
@@ -119,7 +120,7 @@ private fun SessionDetailContent(
         if (uiState.postWorkout) {
             PostWorkoutTopBar(subtitle = uiState.postWorkoutSubtitle())
         } else {
-            SessionDetailTopBar(exercise = uiState.exercise, onBackClick = onBackClick)
+            RepMateTopBar(title = uiState.exercise.ifBlank { "Session" }, onBackClick = onBackClick)
         }
 
         when {
@@ -218,43 +219,6 @@ private fun SessionDetailUiState.postWorkoutSubtitle(): String =
     listOfNotNull(exercise.takeIf { it.isNotBlank() }, dateLabel.takeIf { it.isNotBlank() }, durationLabel)
         .joinToString(" · ")
 
-@Composable
-private fun SessionDetailTopBar(
-    exercise: String,
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        IconButton(
-            onClick = onBackClick,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        Text(
-            text = exercise.ifBlank { "Session" },
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-}
-
-/**
- * Post-workout header: no back arrow, because leaving is "Done" (or system back, which does the
- * same) -- an arrow would suggest returning to the workout that has just been saved and closed.
- */
 @Composable
 private fun PostWorkoutTopBar(
     subtitle: String,

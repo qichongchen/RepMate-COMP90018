@@ -8,8 +8,10 @@ import com.repmate.data.repo.Friend
 import com.repmate.data.repo.FriendRepository
 import com.repmate.data.repo.FriendRequest
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -312,23 +314,57 @@ class FirestoreFriendRepository @Inject constructor(
                         return@addSnapshotListener
                     }
 
-                    val friends = snapshot?.documents
-                        ?.map { document ->
-                            Friend(
-                                userId = document.id,
-                                displayName = document
-                                    .getString("displayName")
-                                    ?: "RepMate User"
-                            )
-                        }
+                    val friendIds = snapshot?.documents?.map { it.id }.orEmpty()
+                    val snapshotNames = snapshot?.documents
+                        ?.associate { it.id to it.getString("displayName") }
                         .orEmpty()
 
-                    trySend(friends)
+                    // Show the name each friend has NOW, not the one copied into the friendship
+                    // document when it was created. That copy is never updated, so a friend who
+                    // set or changed their display name afterwards showed here under their old
+                    // name -- or under "RepMate User" if they had none at the time -- while the
+                    // leaderboard, which reads the profile, showed the new one. Two names for one
+                    // person, on two screens.
+                    launch {
+                        val friends = friendIds.map { friendId ->
+                            Friend(
+                                userId = friendId,
+                                displayName = currentDisplayNameOf(friendId)
+                                    ?: snapshotNames[friendId]
+                                    ?: "RepMate User",
+                            )
+                        }
+                        trySend(friends)
+                    }
                 }
 
             awaitClose {
                 listener.remove()
             }
+        }
+
+    /**
+     * The display name on [userId]'s profile right now, or null if they have none or it could not
+     * be read. Reading another user's profile by id is a single `get`, which the rules allow.
+     *
+     * One read per friend, deliberately: a friends list is small, and a wrong name on the screen
+     * is worse than a few extra reads. The leaderboard's friends tab already resolves names the
+     * same way.
+     */
+    private suspend fun currentDisplayNameOf(userId: String): String? =
+        try {
+            firestore
+                .collection("users")
+                .document(userId)
+                .get()
+                .await()
+                .getString("displayName")
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read the profile name for $userId", e)
+            null
         }
 
     override suspend fun removeFriend(
