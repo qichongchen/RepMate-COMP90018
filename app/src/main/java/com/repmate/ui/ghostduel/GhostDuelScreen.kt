@@ -45,6 +45,7 @@ import com.repmate.engine.ExerciseType
 import com.repmate.ui.components.EmptyState
 import com.repmate.ui.components.RepMateButton
 import com.repmate.ui.components.RepMateCard
+import com.repmate.ui.components.RepMateTopBar
 import com.repmate.ui.components.displayLabel
 import com.repmate.ui.components.icon
 import com.repmate.ui.theme.RepMateTheme
@@ -107,7 +108,7 @@ private fun GhostDuelContent(
     var showOpponentPicker by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        GhostDuelTopBar(onBackClick = onBackClick)
+        RepMateTopBar(title = "Ghost Duel", onBackClick = onBackClick)
 
         if (uiState.friends.isEmpty()) {
             if (!uiState.isLoading) {
@@ -155,39 +156,6 @@ private fun GhostDuelContent(
                 )
             }
         }
-    }
-}
-
-/** Same shape as `SessionDetailTopBar` in `SessionDetailScreen.kt` -- a bordered circular back button plus a bold title, with an explicit [MaterialTheme.colorScheme.onBackground] on the title (History shipped once without one and the title went invisible in dark mode). */
-@Composable
-private fun GhostDuelTopBar(
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        IconButton(
-            onClick = onBackClick,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        Text(
-            text = "Ghost Duel",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
     }
 }
 

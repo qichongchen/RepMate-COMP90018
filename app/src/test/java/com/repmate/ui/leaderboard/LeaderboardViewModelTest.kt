@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -132,6 +133,30 @@ class LeaderboardViewModelTest {
     // turns a failed query into a LeaderboardLoad.Failed value is covered by LeaderboardLoadTest;
     // making the ViewModel's reaction testable needs its logging moved behind a seam, the way
     // LocalBestScoreSync and GuestMigrationLauncher already do it.
+
+    @Test
+    fun theSignedInUsersIdIsExposedSoTheScreenCanMarkTheirRow() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            friends.friends.value = listOf(friend("alice"))
+            val viewModel = viewModel()
+            advanceUntilIdle()
+
+            // The friends board includes the signed-in user, so without this their row would be
+            // indistinguishable from everyone else's.
+            assertEquals(ME, viewModel.uiState.value.currentUserId)
+        }
+
+    @Test
+    fun aSignedOutUserHasNoRowToMark() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            auth.uid = null
+            val viewModel = viewModel()
+            advanceUntilIdle()
+
+            assertNull(viewModel.uiState.value.currentUserId)
+        }
 
     @Test
     fun switchingToGlobalAndBackReloadsTheFriendsTab() =

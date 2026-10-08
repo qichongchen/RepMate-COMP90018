@@ -126,7 +126,7 @@ private fun HomeContent(
 
             Column {
                 Text(
-                    text = "leaderboard, today",
+                    text = "leaderboard",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
