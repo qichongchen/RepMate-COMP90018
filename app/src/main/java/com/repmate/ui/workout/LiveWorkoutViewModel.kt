@@ -10,6 +10,7 @@ import com.repmate.engine.CalibrationProfile
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.FormScorer
 import com.repmate.engine.JumpingJackRepDetector
+import com.repmate.data.memory.JustFinishedSessionStore
 import com.repmate.engine.MotionFrame
 import com.repmate.engine.RejectionGuard
 import com.repmate.engine.RepEvent
@@ -75,6 +76,7 @@ class LiveWorkoutViewModel
         private val sensorSource: SensorSource,
         private val calibrationRepository: CalibrationRepository,
         private val sessionRepository: SessionRepository,
+        private val justFinishedSessions: JustFinishedSessionStore,
         private val safetyCheckInPreferences: SafetyCheckInPreferences,
         private val checkInScheduler: CheckInScheduler,
         private val workoutPreferences: WorkoutPreferences,
@@ -130,6 +132,18 @@ class LiveWorkoutViewModel
         private val scoredReps = mutableListOf<RepScore>()
         private val rejectedByGuard = mutableMapOf<RejectionGuard, Int>()
 
+        /**
+         * The frames fed to the detector this set, kept only so Motion Replay can draw the curve
+         * for the session just finished (see [JustFinishedSessionStore]). Squats only, capped at
+         * [MAX_REPLAY_FRAMES], and never written to Room.
+         *
+         * Appended at exactly the point a frame reaches the detector, so replaying these frames
+         * with the same detector and profile re-derives the very same reps -- the replay can never
+         * disagree with the rep count this screen showed.
+         */
+        private val replayFrames = mutableListOf<MotionFrame>()
+        private var replayFramesTruncated = false
+
         private lateinit var processFrame: (MotionFrame) -> RepEvent?
         private lateinit var currentPhase: () -> RepPhase
 
@@ -141,6 +155,8 @@ class LiveWorkoutViewModel
             if (::activeExerciseType.isInitialized) return
             activeExerciseType = exerciseType
             _uiState.update { it.copy(exercise = exerciseType) }
+            // A new set replaces the last one's replay data rather than holding both.
+            justFinishedSessions.clear()
 
             viewModelScope.launch {
                 calibrationProfile = calibrationRepository.getProfile(exerciseType)
@@ -200,11 +216,32 @@ class LiveWorkoutViewModel
                 viewModelScope.launch {
                     sensorSource.frames.collect { frame ->
                         if (_uiState.value.isPaused) return@collect
+                        captureForReplay(frame)
                         val repEvent = processFrame(frame)
                         _uiState.update { it.copy(phase = currentPhase()) }
                         if (repEvent != null) onRepDetected(repEvent)
                     }
                 }
+        }
+
+        /**
+         * Keeps [frame] for the replay of this set, up to [MAX_REPLAY_FRAMES].
+         *
+         * At the cap it stops capturing rather than dropping the oldest frames: keeping the
+         * **start** of the set means the replay's rep 1 is the set's rep 1, so a long set replays
+         * its first reps instead of an unlabelled window out of the middle.
+         */
+        private fun captureForReplay(frame: MotionFrame) {
+            // Both IMU exercises replay; the store refuses anything SessionReplayer cannot handle.
+            if (!JustFinishedSessionStore.canReplay(activeExerciseType)) return
+            if (replayFrames.size >= MAX_REPLAY_FRAMES) {
+                if (!replayFramesTruncated) {
+                    replayFramesTruncated = true
+                    Log.i(TAG, "replay capture full at $MAX_REPLAY_FRAMES frames; the rest of this set will not replay")
+                }
+                return
+            }
+            replayFrames += frame
         }
 
         private fun onRepDetected(repEvent: RepEvent) {
@@ -253,6 +290,10 @@ class LiveWorkoutViewModel
                     frames = null,
                     endedAt = System.currentTimeMillis(),
                 )
+            // Room keeps storing frames = null; the frames go to memory only, for this one
+            // screen. Squat-only and frame-less sessions are ignored by the store itself.
+            justFinishedSessions.remember(session.copy(frames = replayFrames.toList()))
+
             viewModelScope.launch {
                 sessionRepository.save(session)
                 // Safety check-in, if the user opted in from Profile -- see CheckInScheduler's
@@ -278,6 +319,14 @@ class LiveWorkoutViewModel
 
         private companion object {
             const val TAG = "RepMateWorkout"
+
+            /**
+             * How many frames one set keeps for Motion Replay: 30,000, which is ten minutes at the
+             * ~50 Hz the sensor delivers, or roughly 2 MB of [MotionFrame]s. Long enough that a
+             * normal set is captured whole, bounded so a phone left recording cannot grow the heap
+             * without limit. Past it, capture stops (see [captureForReplay]).
+             */
+            const val MAX_REPLAY_FRAMES = 30_000
         }
 
         override fun onCleared() {

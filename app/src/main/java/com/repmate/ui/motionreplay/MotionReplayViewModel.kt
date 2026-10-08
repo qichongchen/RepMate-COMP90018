@@ -2,6 +2,7 @@ package com.repmate.ui.motionreplay
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.repmate.data.memory.JustFinishedSessionStore
 import com.repmate.data.repo.CalibrationRepository
 import com.repmate.data.repo.SessionRepository
 import com.repmate.engine.ExerciseType
@@ -37,15 +38,18 @@ data class MotionReplayScreenState(
  * [MotionReplayScreenState] exactly once, via [onSessionId], then only ever mutates
  * `uiState.currentIndex` from there (see [onPrevRepClicked]/[onNextRepClicked]).
  *
- * ## Why [SessionRepository.getById] only, for now
- * Getting a session back with its real [com.repmate.engine.MotionFrame]s right after a workout
- * just finished -- and wiring the actual capture of those frames in `LiveWorkoutViewModel` -- is
- * separate, ongoing work; this class deliberately does not touch `LiveWorkoutViewModel` and only
- * reads sessions back through [SessionRepository.getById]. Every session that path returns has
- * `frames = null` today (Room has no column for them yet, same as [SessionRepository.recent]), so
- * [MotionReplayUiState.isReplayAvailable] is `false` for every session right now -- expected, not
- * a bug. Nothing here needs to change once frame capture lands: [buildScreenState] already takes
- * the `frames != null` branch whenever it's true.
+ * ## Where the session comes from
+ * Two sources, in this order:
+ * 1. [JustFinishedSessionStore] -- the squat set the user has just finished, held in memory with
+ *    its real [com.repmate.engine.MotionFrame]s. This is the only session that can produce a
+ *    curve, and it is why the replay screen has something to draw at all.
+ * 2. [SessionRepository.getById] -- anything else (a session opened from History, or the
+ *    just-finished set after another workout has replaced it). Room stores no frames, so these
+ *    come back with `frames = null` and [MotionReplayUiState.isReplayAvailable] is `false`:
+ *    [buildScreenState] falls back to the saved scores plus a notice, which is the intended
+ *    behaviour, not a bug.
+ *
+ * Replay is deliberately squat-only; [JustFinishedSessionStore] documents why, and enforces it.
  *
  * ## Calibration profile lookup in [buildScreenState]
  * Now that `calibrationBand()` in `MotionReplayUiModels.kt` is a real implementation (PR #21
@@ -62,6 +66,7 @@ class MotionReplayViewModel
 constructor(
     private val sessionRepository: SessionRepository,
     private val calibrationRepository: CalibrationRepository,
+    private val justFinishedSessions: JustFinishedSessionStore,
 ) : ViewModel() {
     private val _screenState = MutableStateFlow(MotionReplayScreenState())
     val screenState: StateFlow<MotionReplayScreenState> = _screenState.asStateFlow()
@@ -76,7 +81,10 @@ constructor(
         initializedSessionId = sessionId
 
         viewModelScope.launch {
-            val session = sessionRepository.getById(sessionId)
+            // The just-finished set is the only session that has frames: Room stores none, so a
+            // session loaded from there can only ever reach the no-replay state. See
+            // JustFinishedSessionStore for why the frames are not persisted.
+            val session = justFinishedSessions.sessionFor(sessionId) ?: sessionRepository.getById(sessionId)
             _screenState.value = session?.let { buildScreenState(it) } ?: notFoundScreenState(sessionId)
         }
     }
