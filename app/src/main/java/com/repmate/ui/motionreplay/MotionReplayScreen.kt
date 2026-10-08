@@ -152,6 +152,7 @@ private fun MotionReplayContent(
             when (val rep = uiState.reps.getOrNull(uiState.currentIndex)) {
                 null -> EmptyReplayBody(modifier = Modifier.weight(1f))
                 is MotionReplayRepUi.Calibrated -> CalibratedReplayBody(rep = rep, modifier = Modifier.weight(1f))
+                is MotionReplayRepUi.PushupAngle -> PushupAngleReplayBody(rep = rep, modifier = Modifier.weight(1f))
                 is MotionReplayRepUi.Uncalibrated ->
                     UncalibratedReplayBody(
                         rep = rep,
@@ -283,9 +284,62 @@ private fun NoReplayDataBody(
 }
 
 /**
+ * STATE 4: a push-up rep, charted as the elbow angle through the rep.
+ *
+ * Push-ups are counted from the camera and the phone is held still, so there is no acceleration
+ * to plot -- the movement is the angle. The band is the detector's own straight/bent pair, so it
+ * shows what the rep had to achieve the way the calibration band does for the IMU exercises:
+ * the curve has to dip below the lower edge and come back above the upper one for the rep to
+ * count at all.
+ *
+ * Reuses [AccelerometerCurveChart] rather than drawing a second chart: the shape is the same
+ * (a curve against a band), only the units and captions differ, and the axis machinery is the
+ * part worth not duplicating.
+ */
+@Composable
+private fun PushupAngleReplayBody(
+    rep: MotionReplayRepUi.PushupAngle,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        ScoreHeader(score = rep.score)
+        RepMateCard {
+            Text(
+                text = "your elbow angle vs. the straight/bent range",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            AccelerometerCurveChart(
+                curve = rep.curve,
+                band = rep.angleBand,
+                modifier = Modifier.fillMaxWidth(),
+                yCaption = "elbow angle (°)",
+                emptyMessage = "The camera could not read your arm clearly enough to chart this rep.",
+            )
+        }
+        MetricsCard {
+            MetricRow(
+                label = "Depth reached",
+                value = rep.bottomDegrees?.let { String.format(Locale.US, "%.0f°", it) } ?: "not measurable",
+            )
+            MetricRow(label = "Tempo", value = formatSeconds(rep.tempoSeconds), showDivider = false)
+        }
+        ReasonsSection(reasons = rep.reasons)
+    }
+}
+
+/**
  * STATE 1: a calibrated rep's real motion curve, score, and metrics, with the calibration-range
- * band shaded behind the curve. Not reachable yet for a real live session -- see
- * [com.repmate.ui.workout.LiveWorkoutViewModel]'s `frames = null`.
+ * band shaded behind the curve. Reached for the squat or jumping-jack set the user has just
+ * finished, whose frames [com.repmate.data.memory.JustFinishedSessionStore] keeps in memory.
  */
 @Composable
 private fun CalibratedReplayBody(
@@ -484,11 +538,13 @@ private fun AccelerometerCurveChart(
     curve: List<Pair<Long, Float>>,
     band: ClosedFloatingPointRange<Float>,
     modifier: Modifier = Modifier,
+    yCaption: String = "acceleration (m/s²)",
+    emptyMessage: String = "Not enough motion data to draw a curve.",
 ) {
     if (curve.size < 2) {
         Box(modifier = modifier.height(120.dp), contentAlignment = Alignment.Center) {
             Text(
-                text = "Not enough motion data to draw a curve.",
+                text = emptyMessage,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -513,7 +569,7 @@ private fun AccelerometerCurveChart(
             val stepMs = timeTickStepMs(durationMs)
             ChartAxes(
                 xCaption = "time (s)",
-                yCaption = "acceleration (m/s²)",
+                yCaption = yCaption,
                 xTicks = timeTickMillis(durationMs).map { AxisTick(it / tSpan, formatTimeTick(it, stepMs)) },
                 yTicks = listOf(AxisTick(0f, formatAxisValue(valueMin)), AxisTick(1f, formatAxisValue(valueMax))),
             )

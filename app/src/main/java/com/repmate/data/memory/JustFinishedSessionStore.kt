@@ -43,6 +43,9 @@ class JustFinishedSessionStore
         @Volatile
         private var stored: WorkoutSession? = null
 
+        @Volatile
+        private var pushupTraces: Pair<String, List<PushupRepTrace>>? = null
+
         /**
          * Remembers [session] as the one to replay, replacing whatever was held.
          *
@@ -59,9 +62,34 @@ class JustFinishedSessionStore
         /** The stored session if it is the one [sessionId] names, else null. Does not consume it. */
         fun sessionFor(sessionId: String): WorkoutSession? = stored?.takeIf { it.id == sessionId }
 
-        /** Drops the stored session and its frames. Called when a new workout starts. */
+        /**
+         * Remembers the per-rep elbow-angle curves of the push-up set [sessionId], the push-up
+         * equivalent of the frames kept for the IMU exercises.
+         *
+         * Push-ups get their own slot because their movement is not in the accelerometer at all:
+         * the phone is propped up and held still, so there are no frames to replay. The angles are
+         * collected as the set happens (see `PushupAngleTrace`). Empty traces are ignored -- there
+         * would be nothing to draw.
+         */
+        fun rememberPushupTraces(
+            sessionId: String,
+            reps: List<PushupRepTrace>,
+        ) {
+            if (reps.isEmpty()) return
+            pushupTraces = sessionId to reps
+        }
+
+        /** The stored angle curves if they belong to [sessionId], else null. */
+        fun pushupTracesFor(sessionId: String): List<PushupRepTrace>? =
+            pushupTraces?.takeIf { it.first == sessionId }?.second
+
+        /**
+         * Drops everything held for the last set -- the session's frames and any push-up angle
+         * curves. Called when a new workout starts.
+         */
         fun clear() {
             stored = null
+            pushupTraces = null
         }
 
         companion object {
