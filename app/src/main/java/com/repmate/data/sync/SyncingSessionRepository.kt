@@ -24,6 +24,7 @@ class SyncingSessionRepository @Inject constructor(
     private val firestoreWorkoutDataSource: FirestoreWorkoutDataSource,
     private val authRepository: AuthRepository,
     private val localBestScoreSync: LocalBestScoreSync,
+    private val leaderboardSync: LeaderboardSync,
     @ApplicationScope private val applicationScope: CoroutineScope,
 ) : SessionRepository {
 
@@ -139,6 +140,28 @@ class SyncingSessionRepository @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Republishing local Ghost Duel best scores failed unexpectedly", e)
+        }
+
+        republishLeaderboardRow()
+    }
+
+    /**
+     * Updates the user's own global leaderboard row (see [LeaderboardSync]). Same contract as the
+     * Ghost Duel republish above: best-effort, logged, and never able to break a workout save.
+     *
+     * NOTE: this needs the `leaderboard/{uid}` write rule deployed. Until it is, every attempt
+     * fails with PERMISSION_DENIED and is logged here; nothing else is affected, and the Friends
+     * tab reads `ghostScores` precisely so it does not depend on that rule.
+     */
+    private suspend fun republishLeaderboardRow() {
+        try {
+            leaderboardSync.publish()?.let { error ->
+                Log.w(TAG, "Leaderboard row could not be updated", error)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Updating the leaderboard row failed unexpectedly", e)
         }
     }
 }

@@ -710,16 +710,94 @@ test("Friends are readable and writable only by their owner", async () => {
   await assertFails(realUser("bob").doc(path).set(data));
 });
 
-test("The leaderboard is readable when signed in and never writable", async () => {
+const leaderboardRow = (overrides = {}) => ({
+  displayName: "Alice",
+  points: 120,
+  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  ...overrides
+});
+
+test("The leaderboard is readable by any signed-in user but not anonymously", async () => {
   await env.withSecurityRulesDisabled(async context => {
-    await context.firestore().doc("leaderboard/alice").set({ score: 1 });
+    await context.firestore().doc("leaderboard/alice").set({ displayName: "Alice", points: 1 });
   });
 
   await assertSucceeds(realUser("bob").doc("leaderboard/alice").get());
-  await assertFails(realUser("alice").doc("leaderboard/alice").set({ score: 99 }));
   await assertFails(
     env.unauthenticatedContext().firestore().doc("leaderboard/alice").get()
   );
+});
+
+test("A user writes their own leaderboard row and nobody else's", async () => {
+  await assertSucceeds(realUser("alice").doc("leaderboard/alice").set(leaderboardRow()));
+  await assertFails(realUser("bob").doc("leaderboard/alice").set(leaderboardRow()));
+  await assertFails(
+    env.unauthenticatedContext().firestore().doc("leaderboard/alice").set(leaderboardRow())
+  );
+});
+
+test("A leaderboard row is refused unless it has exactly the three expected fields", async () => {
+  const db = realUser("alice");
+
+  // Missing updatedAt.
+  await assertFails(db.doc("leaderboard/alice").set({ displayName: "Alice", points: 10 }));
+  // An extra field nobody reads.
+  await assertFails(
+    db.doc("leaderboard/alice").set(leaderboardRow({ rank: 1 }))
+  );
+  // The old shape, from before this rule existed.
+  await assertFails(db.doc("leaderboard/alice").set({ score: 99 }));
+});
+
+test("A leaderboard row is refused with an implausible score", async () => {
+  const db = realUser("alice");
+
+  await assertFails(db.doc("leaderboard/alice").set(leaderboardRow({ points: -1 })));
+  await assertFails(db.doc("leaderboard/alice").set(leaderboardRow({ points: 100001 })));
+  await assertFails(db.doc("leaderboard/alice").set(leaderboardRow({ points: 7.5 })));
+  await assertFails(db.doc("leaderboard/alice").set(leaderboardRow({ points: "lots" })));
+  // The boundaries themselves are fine.
+  await assertSucceeds(db.doc("leaderboard/alice").set(leaderboardRow({ points: 0 })));
+  await assertSucceeds(db.doc("leaderboard/alice").set(leaderboardRow({ points: 100000 })));
+});
+
+test("A leaderboard row is refused with a display name that is not a usable one", async () => {
+  const db = realUser("alice");
+
+  await assertFails(db.doc("leaderboard/alice").set(leaderboardRow({ displayName: "ab" })));
+  await assertFails(
+    db.doc("leaderboard/alice").set(leaderboardRow({ displayName: "a".repeat(21) }))
+  );
+  await assertFails(db.doc("leaderboard/alice").set(leaderboardRow({ displayName: 42 })));
+});
+
+test("A leaderboard row cannot be backdated or postdated", async () => {
+  // updatedAt must be the server's own time, so a row cannot claim to be fresher than it is.
+  await assertFails(
+    realUser("alice").doc("leaderboard/alice").set(leaderboardRow({ updatedAt: new Date(0) }))
+  );
+});
+
+test("A user may delete their own leaderboard row and nobody else's", async () => {
+  await assertSucceeds(realUser("alice").doc("leaderboard/alice").set(leaderboardRow()));
+
+  await assertFails(realUser("bob").doc("leaderboard/alice").delete());
+  await assertSucceeds(realUser("alice").doc("leaderboard/alice").delete());
+});
+
+test("Another user's ghostScores can be read one at a time, which is what the friends leaderboard needs", async () => {
+  await env.withSecurityRulesDisabled(async context => {
+    await context.firestore().doc("users/alice/ghostScores/SQUAT").set({
+      exercise: "SQUAT",
+      averageScore: 8.5,
+      repCount: 12,
+      startedAt: 1790200000000
+    });
+  });
+
+  // The friends tab reads each friend's scores with single gets, deliberately: listing is denied.
+  await assertSucceeds(realUser("bob").doc("users/alice/ghostScores/SQUAT").get());
+  await assertFails(realUser("bob").collection("users/alice/ghostScores").get());
 });
 
 // ---------------------------------------------------------------------------------------------
