@@ -47,6 +47,15 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 
+      # Compiled, not run: the instrumented tests need a device plus the Firestore and Auth
+      # emulators, which this job has no way to provide. Compiling them still catches the
+      # failure that actually happened -- a production method was renamed, androidTest kept
+      # calling the old name, and because the source set never built in CI, every instrumented
+      # test in the module (Room, DataStore, the safety worker) was unrunnable for weeks before
+      # anyone noticed. assembleDebug and testDebugUnitTest both pass straight through that.
+      - name: Compile instrumented tests
+        run: ./gradlew compileDebugAndroidTestKotlin
+
       - name: Set up JDK 21 for Firebase Emulator
         uses: actions/setup-java@v4
         with:
