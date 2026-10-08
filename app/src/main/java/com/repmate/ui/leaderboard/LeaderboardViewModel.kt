@@ -30,6 +30,15 @@ data class LeaderboardUiState(
     val entries: List<LeaderboardEntry> = emptyList(),
     val selectedType: LeaderboardType = LeaderboardType.FRIENDS,
     val isUnavailable: Boolean = false,
+    /**
+     * The signed-in user, so the screen can mark their own row. Null when signed out, which only
+     * happens in the moment before the nav graph sends them to Welcome.
+     *
+     * A leaderboard you cannot find yourself on is hard to read, and the friends board now
+     * includes the signed-in user (see [LeaderboardViewModel.loadFriendsLeaderboard]), so without
+     * this their row is indistinguishable from everyone else's.
+     */
+    val currentUserId: String? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -45,6 +54,7 @@ class LeaderboardViewModel @Inject constructor(
     private var leaderboardJob: Job? = null
 
     init {
+        _uiState.value = _uiState.value.copy(currentUserId = authRepository.getCurrentUserId())
         loadFriendsLeaderboard()
     }
 
