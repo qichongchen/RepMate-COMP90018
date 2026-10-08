@@ -13,9 +13,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.example.repmate.data.auth.AuthRepository
 import com.repmate.data.repo.FriendRepository
 import com.repmate.data.repo.observeFriends
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.flatMapLatest
 
 
 
@@ -29,10 +32,12 @@ data class LeaderboardUiState(
     val isUnavailable: Boolean = false,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class LeaderboardViewModel @Inject constructor(
     private val leaderboardRepository: LeaderboardRepository,
     private val friendRepository: FriendRepository,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LeaderboardUiState())
@@ -47,38 +52,38 @@ class LeaderboardViewModel @Inject constructor(
         leaderboardJob?.cancel()
 
         leaderboardJob = viewModelScope.launch {
-            friendRepository.observeFriends().collect { friends ->
-                val friendUserIds = friends.map { it.userId }
+            // flatMapLatest, not a nested collect: the inner flow for a non-empty friends list
+            // never completes, so collecting it inside the outer collect meant the lambda never
+            // returned and every later friends-list change was ignored -- adding a second friend
+            // showed nothing until the screen was left and reopened.
+            friendRepository.observeFriends()
+                .flatMapLatest { friends ->
+                    // The signed-in user is included so they can see their own standing among
+                    // their friends; a leaderboard you are absent from is hard to read.
+                    val userIds =
+                        (friends.map { it.userId } + listOfNotNull(authRepository.getCurrentUserId())).distinct()
+                    leaderboardRepository.observeFriends(userIds)
+                }
+                .collect { load ->
+                    _uiState.value =
+                        when (load) {
+                            is LeaderboardLoad.Loaded ->
+                                _uiState.value.copy(
+                                    entries = load.entries,
+                                    selectedType = LeaderboardType.FRIENDS,
+                                    isUnavailable = false,
+                                )
 
-                leaderboardRepository
-                    .observeFriends(friendUserIds)
-                    .collect { load ->
-                        _uiState.value =
-                            when (load) {
-                                is LeaderboardLoad.Loaded -> {
-                                    _uiState.value.copy(
-                                        entries = load.entries,
-                                        selectedType = LeaderboardType.FRIENDS,
-                                        isUnavailable = false,
-                                    )
-                                }
-
-                                is LeaderboardLoad.Failed -> {
-                                    Log.w(
-                                        "RepMateLeaderboard",
-                                        "friends leaderboard unavailable",
-                                        load.cause
-                                    )
-
-                                    _uiState.value.copy(
-                                        entries = emptyList(),
-                                        selectedType = LeaderboardType.FRIENDS,
-                                        isUnavailable = true,
-                                    )
-                                }
+                            is LeaderboardLoad.Failed -> {
+                                Log.w("RepMateLeaderboard", "friends leaderboard unavailable", load.cause)
+                                _uiState.value.copy(
+                                    entries = emptyList(),
+                                    selectedType = LeaderboardType.FRIENDS,
+                                    isUnavailable = true,
+                                )
                             }
-                    }
-            }
+                        }
+                }
         }
     }
 

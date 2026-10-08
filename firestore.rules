@@ -82,8 +82,32 @@ service cloud.firestore {
     }
 
     // Leaderboard
+    //
+    // One row per user, written by the user themselves (FirestoreLeaderboardWriter) after a
+    // workout is saved or History restores sessions. Readable by any signed-in user: that is the
+    // point of a leaderboard, and the row holds only a display name the user chose and a score.
+    //
+    // NOTE: there was no write rule at all before, so nothing could ever populate this
+    // collection and both leaderboard tabs were permanently empty.
     match /leaderboard/{userId} {
       allow read: if request.auth != null;
+
+      // Only your own row, only the three fields a row needs, and points must be a sane
+      // non-negative integer so one client cannot write itself to the top with a bogus value.
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(["displayName", "points", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["displayName", "points", "updatedAt"])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 3
+        && request.resource.data.displayName.size() <= 20
+        && request.resource.data.points is int
+        && request.resource.data.points >= 0
+        && request.resource.data.points <= 100000
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == userId;
     }
 
     // User Profile
