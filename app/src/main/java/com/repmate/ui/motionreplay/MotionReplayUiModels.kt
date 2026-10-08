@@ -1,9 +1,12 @@
 package com.repmate.ui.motionreplay
 
+import com.repmate.data.memory.PushupRepTrace
 import com.repmate.engine.CalibrationProfile
 import com.repmate.engine.ExerciseType
 import com.repmate.engine.FormScorer
+import com.repmate.engine.PushupRepDetector
 import com.repmate.engine.ReplayedSession
+import com.repmate.engine.WorkoutSession
 import com.repmate.engine.SmoothedSample
 
 sealed interface MotionReplayRepUi {
@@ -26,6 +29,28 @@ sealed interface MotionReplayRepUi {
         override val repIndex: Int,
         override val repCount: Int,
         override val tempoSeconds: Float,
+    ) : MotionReplayRepUi
+
+    /**
+     * A push-up rep, charted as the **elbow angle** through the rep rather than acceleration.
+     *
+     * Push-ups are counted from the camera and the phone is deliberately held still, so there is
+     * no acceleration curve to show -- the movement is the angle. [angleBand] is the detector's
+     * own straight/bent pair: a rep has to drop below the lower line and come back above the
+     * upper one to count, so the band shows what the rep had to achieve, the way the calibration
+     * band does for the IMU exercises.
+     *
+     * @property bottomDegrees how deep the rep went, or null if the angle could not be read.
+     */
+    data class PushupAngle(
+        override val repIndex: Int,
+        override val repCount: Int,
+        override val tempoSeconds: Float,
+        val curve: List<Pair<Long, Float>>,
+        val angleBand: ClosedFloatingPointRange<Float>,
+        val bottomDegrees: Double?,
+        val score: Float,
+        val reasons: List<String>,
     ) : MotionReplayRepUi
 }
 
@@ -57,6 +82,40 @@ internal fun repMinMagnitude(curve: List<SmoothedSample>): Float =
  */
 internal fun calibrationBand(profile: CalibrationProfile, repMinMagnitude: Float): ClosedFloatingPointRange<Float> =
     (repMinMagnitude + profile.softestSampleAmplitude)..(repMinMagnitude + profile.loudestSampleAmplitude)
+
+/**
+ * The push-up report: each counted rep's elbow-angle curve beside the score that rep was given.
+ *
+ * Pairs [traces] with [WorkoutSession.reps] by position -- both are produced in rep order by the
+ * same set -- and stops at whichever is shorter, so a capped or partially readable trace reports
+ * the reps it does have rather than nothing. Returns null when there is nothing to chart, which
+ * leaves the screen on its honest no-replay notice.
+ */
+fun pushupReplayUiState(
+    session: WorkoutSession,
+    traces: List<PushupRepTrace>,
+): MotionReplayUiState? {
+    if (traces.isEmpty()) return null
+
+    val band = PushupRepDetector.DEFAULT_DOWN_DEGREES.toFloat()..PushupRepDetector.DEFAULT_UP_DEGREES.toFloat()
+    val reps =
+        traces.mapIndexedNotNull { index, trace ->
+            val score = session.reps.getOrNull(index) ?: return@mapIndexedNotNull null
+            MotionReplayRepUi.PushupAngle(
+                repIndex = trace.repIndex,
+                repCount = traces.size,
+                tempoSeconds = score.tempoSeconds,
+                curve = trace.curve,
+                angleBand = band,
+                bottomDegrees = trace.bottomDegrees,
+                score = score.score,
+                reasons = score.reasons,
+            )
+        }
+
+    if (reps.isEmpty()) return null
+    return MotionReplayUiState(session.id, session.exercise, reps, isReplayAvailable = true)
+}
 
 fun ReplayedSession.toMotionReplayUiState(profile: CalibrationProfile?): MotionReplayUiState {
     val reps = this.reps.mapIndexed { i, r ->

@@ -90,6 +90,12 @@ constructor(
     }
 
     private suspend fun buildScreenState(session: WorkoutSession): MotionReplayScreenState {
+        // Push-ups are charted from the elbow angle collected during the set, not from frames:
+        // their accelerometer frames describe a phone held still. See JustFinishedSessionStore.
+        justFinishedSessions.pushupTracesFor(session.id)?.let { traces ->
+            pushupReplayUiState(session, traces)?.let { return MotionReplayScreenState(uiState = it) }
+        }
+
         session.frames ?: return noReplayDataState(session)
 
         val profile = calibrationRepository.getProfile(session.exercise)

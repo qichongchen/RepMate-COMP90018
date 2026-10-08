@@ -15,6 +15,7 @@ import com.repmate.pose.Arm
 import com.repmate.pose.CountingStatus
 import com.repmate.pose.Tracking
 import com.repmate.pose.countingStatus
+import com.repmate.data.memory.JustFinishedSessionStore
 import com.repmate.safety.CheckInScheduler
 import com.repmate.safety.SafetyCheckInPreferences
 import com.repmate.sensors.PhoneStabilityGate
@@ -117,6 +118,7 @@ class PushupWorkoutViewModel
     @Inject
     constructor(
         private val sessionRepository: SessionRepository,
+        private val justFinishedSessions: JustFinishedSessionStore,
         private val safetyCheckInPreferences: SafetyCheckInPreferences,
         private val checkInScheduler: CheckInScheduler,
         private val workoutPreferences: WorkoutPreferences,
@@ -138,6 +140,13 @@ class PushupWorkoutViewModel
             workoutPreferences.isSpokenRepCountEnabled
                 .stateIn(viewModelScope, SharingStarted.Eagerly, false)
         private val frameProcessor = PushupFrameProcessor()
+
+        /**
+         * Each counted rep's elbow-angle curve, for the report this set ends on. Push-ups have no
+         * accelerometer movement to replay -- the phone is propped up and held still -- so the
+         * angle is collected as the set happens. See [PushupAngleTrace].
+         */
+        private val angleTrace = PushupAngleTrace()
         private val stabilityGate = PhoneStabilityGate()
 
         // Everything the workout itself changes. The two feedback settings are folded in below
@@ -175,13 +184,21 @@ class PushupWorkoutViewModel
 
         /** Called on the main thread with one frame's arms, once ML Kit has processed it. */
         fun onPose(left: Arm?, right: Arm?) {
+            val frameAtMs = SystemClock.elapsedRealtime()
             val result =
                 frameProcessor.process(
                     left = left,
                     right = right,
                     phoneStable = stabilityGate.isStable,
-                    nowMs = SystemClock.elapsedRealtime(),
+                    nowMs = frameAtMs,
                 )
+            angleTrace.onFrame(
+                nowMs = frameAtMs,
+                phase = result.phase,
+                smoothedDegrees = result.smoothedDegrees,
+                repCompleted = result.repCompleted,
+                bottomDegrees = result.repBottomDegrees,
+            )
             if (result.status != _uiState.value.status) {
                 Log.i(TAG, "counting status: ${_uiState.value.status} -> ${result.status}")
             }
@@ -364,6 +381,8 @@ class PushupWorkoutViewModel
         /** Resets the count and arm lock for a fresh set. */
         fun onResetClicked() {
             frameProcessor.reset()
+            angleTrace.reset()
+            justFinishedSessions.clear()
             scoredReps.clear()
             bestBottomDegrees = null
             lastRepAtElapsedMs = SystemClock.elapsedRealtime()
@@ -394,6 +413,10 @@ class PushupWorkoutViewModel
                     // with no frames (every session does today; Room has no column for them yet).
                     frames = null,
                 )
+            // The angle curves go to memory only, for the report this set ends on. Room stores
+            // no curve for a push-up any more than it stores frames for a squat.
+            justFinishedSessions.rememberPushupTraces(sessionId, angleTrace.reps)
+
             viewModelScope.launch {
                 sessionRepository.save(session)
                 // Safety check-in, if the user opted in from Profile -- see CheckInScheduler's

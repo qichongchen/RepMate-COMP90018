@@ -55,6 +55,12 @@ class PushupFrameProcessor(
         val phase: PushupRepDetector.Phase,
         val repCompleted: Boolean,
         val repBottomDegrees: Double? = null,
+        /**
+         * The detector's smoothed elbow angle after this frame, or null before it has a usable
+         * one. Reported so the finished set can be charted (see [PushupAngleTrace]); the smoothed
+         * value rather than the raw one, so a single mislabelled landmark is already filtered out.
+         */
+        val smoothedDegrees: Double? = null,
     )
 
     private var tracking: Tracking = Tracking.NO_PERSON
@@ -100,7 +106,15 @@ class PushupFrameProcessor(
             repCompleted = transition?.repCompleted == true
             repBottomDegrees = transition?.bottomDegrees
         }
-        return Result(status, tracking, armLock.isLocked, repDetector.phase, repCompleted, repBottomDegrees)
+        return Result(
+            status,
+            tracking,
+            armLock.isLocked,
+            repDetector.phase,
+            repCompleted,
+            repBottomDegrees,
+            repDetector.smoothedDegrees,
+        )
     }
 
     /** Forgets the arm lock and the half-finished rep, e.g. after the camera is switched. */

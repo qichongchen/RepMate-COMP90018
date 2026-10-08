@@ -1,5 +1,6 @@
 package com.repmate.ui.workout.pushup
 
+import com.repmate.data.memory.PushupRepTrace
 import com.repmate.engine.PushupRepDetector.Phase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
