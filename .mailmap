@@ -1,0 +1,27 @@
+# Canonical contributor identities.
+#
+# Several of us have committed under more than one name or email address (a university
+# address and a GitHub noreply one, or a display name that changed part-way through).
+# Raw `git log` author names therefore split one person's work across several entries.
+#
+# This file maps every alias onto one canonical identity per person, so
+# `git shortlog -sn`, `git log --author=...` and GitHub's contributor views all
+# attribute work to the right person.
+#
+# Format: Canonical Name <canonical@email> Alias Name <alias@email>
+
+Mohit Nanda <mohit240903@gmail.com> mohitnanda786 <mohit240903@gmail.com>
+Mohit Nanda <mohit240903@gmail.com> mohitnanda786 <127978531+mohitnanda786@users.noreply.github.com>
+
+Qichong Chen (Jasper) <qichongc@student.unimelb.edu.au> JasperC <qichongc@student.unimelb.edu.au>
+Qichong Chen (Jasper) <qichongc@student.unimelb.edu.au> qichongchen <qichongc@student.unimelb.edu.au>
+Qichong Chen (Jasper) <qichongc@student.unimelb.edu.au> Qichong Chen <qche0086@student.monash.edu>
+
+Henrico Leodra <43472095+henricoleodra@users.noreply.github.com>
+
+Xue Li (Claire) <xli3326@student.unimelb.edu.au> Claire-59 <xli3326@student.unimelb.edu.au>
+Xue Li (Claire) <xli3326@student.unimelb.edu.au> Xue Li <xli3326@student.unimelb.edu.au>
+
+Xiaonuo Jia (Lisa) <xiaonuo.jia@student.unimelb.edu.au> Lisa-Jia07 <lisajia710@gmail.com>
+Xiaonuo Jia (Lisa) <xiaonuo.jia@student.unimelb.edu.au> Lisa <lisajia710@gmail.com>
+Xiaonuo Jia (Lisa) <xiaonuo.jia@student.unimelb.edu.au> Xiaonuo-Jia <xiaonuo.jia@student.unimelb.edu.au>
