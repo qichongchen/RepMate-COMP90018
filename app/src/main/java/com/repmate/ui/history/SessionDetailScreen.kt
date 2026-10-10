@@ -65,8 +65,9 @@ import java.util.Locale
  *   Replay) and "Done" (goes Home). System back behaves like "Done", so the finished workout is
  *   never reachable again.
  *
- * Push-up reps carry a placeholder score (see `ExerciseType.hasFormScoring`), so for push-ups both
- * modes show "not scored yet" instead of the fake number.
+ * Every exercise's reps carry a real score today, push-ups included (see
+ * `ExerciseType.hasFormScoring`). If an exercise without scoring is ever added, both modes show
+ * "not scored yet" for it instead of a number.
  *
  * Split into this stateful wrapper and the stateless [SessionDetailContent] below, same
  * reasoning as every other screen in this app: previews render from a plain
@@ -296,7 +297,7 @@ private fun NotFoundBody(modifier: Modifier = Modifier) {
  * @param valueColor defaults to plain [MaterialTheme.colorScheme.onSurface]; the caller passes
  *   [MaterialTheme.colorScheme.primary] only for "Avg score", matching Home's LastSessionCard
  *   convention of reserving the accent color for a single highlighted stat, not every number.
- * @param caption optional small line under the value, e.g. "not scored yet" for push-ups.
+ * @param caption optional small line under the value, e.g. "not scored yet" for an unscored exercise.
  */
 @Composable
 private fun StatCard(
@@ -317,9 +318,9 @@ private fun StatCard(
 }
 
 /**
- * @param scored false for exercises without form scoring (push-ups): the row then shows the tempo
- *   and "not scored yet" with "–" in place of the score, and drops the saved reasons, which for
- *   push-ups are only the placeholder's internal note.
+ * @param scored false for an exercise without form scoring (none today): the row then shows the
+ *   tempo and "not scored yet" with "–" in place of the score, and drops the saved reasons, which
+ *   for such an exercise would only be an internal note.
  */
 @Composable
 private fun RepRow(

@@ -32,7 +32,7 @@ data class SessionDetailUiState(
     val notFound: Boolean = false,
     /** True when opened as the summary of a workout that just ended, false when opened from History. Set before the session loads so the header never flashes the History layout. */
     val postWorkout: Boolean = false,
-    /** False when the rep scores are placeholders (see [hasFormScoring]); the screen shows "not scored yet" instead of them. */
+    /** False when the exercise has no real rep scores (see [hasFormScoring]; true for every exercise today); the screen shows "not scored yet" instead of them. */
     val hasFormScoring: Boolean = true,
     /** Minutes until the safety check-in asks "are you OK"; null when the note should not show (feature off, or not post-workout). */
     val safetyCheckInMinutes: Long? = null,
