@@ -349,15 +349,17 @@ The `.expect` files are not bare numbers. They carry the measured evidence behin
 
 ## Team
 
-| Member | Role | GitHub |
+| Member | Built | GitHub |
 |---|---|---|
-| Mohit Nanda | Sensors and engine | **[FILL]** |
-| Xiaonuo Jia (Lisa) | Ghost duels | **[FILL]** |
-| Qichong Chen (Jasper) | **[FILL]** | **[FILL]** |
-| Henrico Leodra | **[FILL]** | **[FILL]** |
-| Xue Li (Claire) | **[FILL]** | **[FILL]** |
+| Mohit Nanda | Motion engine, sensor pipeline and calibration; the recorded trace corpus and its auto-discovering test harness; the push-up camera path and its gating; the safety check-in feature; leaderboard scoring | [@mohitnanda786](https://github.com/mohitnanda786) |
+| Henrico Leodra | The presentation layer — navigation, theme, shared components and most screens; the authentication and display-name flows; guest history migration; haptic and spoken feedback | [@henricoleodra](https://github.com/henricoleodra) |
+| Qichong Chen (Jasper) | Project foundations: the Gradle build, `MainActivity`, the Room database class and migrations; the Friends feature; the leaderboard read path; resources and build configuration | [@qichongchen](https://github.com/qichongchen) |
+| Xiaonuo Jia (Lisa) | Persistence, cloud and security: the Room layer, all five Firestore data sources, the Room-first sync path, `firestore.rules` and its 68-test emulator suite; Firebase setup and CI | [@Lisa-Jia07](https://github.com/Lisa-Jia07) |
+| Xue Li (Claire) | Form scoring — the depth, tempo and consistency rule and its calibration gating — and deterministic session replay, plus the Motion Replay presentation layer | [@Claire-59](https://github.com/Claire-59) |
 
-Names are as they appear in git commit authorship on `main`. The GitHub handles are left blank rather than inferred from commit metadata.
+Roles are derived from git: each line names what that member **created and then maintained**, recoverable with `git log main --diff-filter=A` under `.mailmap`. The report's §4 gives the same breakdown file by file.
+
+Handles for Mohit and Henrico come from their GitHub noreply addresses in `.mailmap` and are exact. The other three are the names used in commit authorship — conventionally the GitHub username, but worth a glance before submission.
 
 > **[FILL: student numbers, if the submission wants them here as well as in the report]**
 

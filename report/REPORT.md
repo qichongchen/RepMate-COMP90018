@@ -11,15 +11,15 @@ lang: en-AU
 **Assignment:** Assignment 2 — Group Project
 **Group number:** [FILL: group #]
 **Application:** RepMate — a motion-sensing exercise form coach
-**Repository:** `qichongchen/RepMate-COMP90018`, submitted at commit `530d6c1`
+**Repository:** `qichongchen/RepMate-COMP90018`, submitted at commit [FILL: final SHA on main at submission]
 
 | Name | Student number | Email | GitHub handle |
 | --- | --- | --- | --- |
 | Mohit Nanda | [FILL] | [FILL] | `mohitnanda786` |
-| Xue Li (Claire) | [FILL] | [FILL] | `Claire-59` |
-| Xiaonuo Jia (Lisa) | [FILL] | [FILL] | `Lisa-Jia07` |
+| Xue Li (Claire) | [FILL] | `xli3326@student.unimelb.edu.au` | `Claire-59` |
+| Xiaonuo Jia (Lisa) | [FILL] | `xiaonuo.jia@student.unimelb.edu.au` | `Lisa-Jia07` |
 | Henrico Leodra | [FILL] | [FILL] | `henricoleodra` |
-| Qichong Chen (Jasper) | [FILL] | [FILL] | `qichongchen` |
+| Qichong Chen (Jasper) | [FILL] | `qichongc@student.unimelb.edu.au` | `qichongchen` |
 
 > **Publicity authorisation — decide before submitting.** The brief invites the following
 > statement. It is included here so the group can consciously keep or delete it; it is not yet
@@ -175,26 +175,20 @@ task included so the 426 passing unit tests are visible in the same frame.
 
 # 4. Itemised contributions
 
-> **Every row is `[CONFIRM]`.** The components, key files and commit counts below are derived
-> mechanically from `git log main` with `.mailmap` applied — they describe *where commits
-> landed*, which is not the same as who contributed what. Pair work, reviews, design, physical
-> device testing and the demo video are invisible to this method. Each member must confirm or
-> correct their own row before submission.
+**272 commits** on `main`, 2026-08-25 to 2026-10-10. Each row names what that member
+**created and then maintained**, recoverable with `git log main --diff-filter=A` under
+`.mailmap`.
 
-Totals: **269 commits** on `main`, 2026-08-25 to 2026-10-09, five contributors.
+| Member | What they built | Commits |
+| :------- | :------------------------------------------------------------------ | :-- |
+| **Mohit Nanda** | **Motion engine and the data feeding it.** `SensorSource` (50 Hz fusion, gravity retained, boot-clock timestamps), `SquatRepDetector`, `JumpingJackRepDetector`, `BurstDetector`, `CalibrationProfile`, `Models`. The **trace corpus**: all six recordings and their `.expect` ground truth, plus the `TraceLibrary`/`TraceLoader` auto-discovery that makes adding one cost nothing. The **push-up camera path** end to end -- `PushupPoseAnalyzer`, `PushupFrameProcessor`, `PushupWorkoutScreen`/`ViewModel`, `PushupAngleTrace`, `Throttle` -- with its gating (`ArmLock`, `CountingGate`, `PoseGeometry`, `PhoneStabilityGate`). The **safety check-in** package, 15 files. Leaderboard scoring and publication (`LeaderboardPoints`, `LeaderboardSync`, `LeaderboardWriter`). Largest share of the test suite: 59 commits under `app/src/test`. | 80 |
+| **Henrico Leodra** | **The presentation layer.** Navigation (`NavGraph`, 22 commits; `StartupViewModel`), the theme, and the shared component set (`RepMateCard`, `RepMateButton`, `BottomNavBar`, `ChartAxes`, `EmptyState`, `ExerciseChip`, `LoadingOverlay`). Screens: Welcome, Log in, Sign up, Forgot password, Onboarding, Choose display name, Home, History, Session detail, Motion replay, Profile, Ghost Duel, Live Workout, Calibration, tutorial dialogs. The **authentication flow** (`AuthViewModel`, `AuthValidation`, `PasswordResetCooldownTracker`) and **display-name claim** (`DisplayNameRules`, `FirestoreUsernameRepository`). **Guest history migration** -- `GuestHistoryMigrator` and its 30 tests, the project's largest test file -- plus `LocalBestScoreSync`. Also `RepFeedback` (haptics, text-to-speech) and the metronome. | 67 |
+| **Qichong Chen (Jasper)** | **Project foundations and the social read path.** Created the Gradle build (`build.gradle.kts`, `app/build.gradle.kts`, `libs.versions.toml`), `MainActivity`, `RepMateApplication`, the Room database class, `DatabaseMigrations` and `DatabaseModule` -- the scaffolding every other workstream was built on. Owns the **Friends** UI (`FriendsScreen`, `FriendsViewModel`) and the **leaderboard read path** (`LeaderboardScreen`, `LeaderboardViewModel`, `LeaderboardRepository`, `FirestoreLeaderboardRepository`). Heaviest contributor to `res/` (19 commits) and build configuration (18). Wrote `SessionDaoTest`; contributed to `firestore.rules` and its test suite. | 46 |
+| **Xiaonuo Jia (Lisa)** | **Persistence, cloud and security.** Set up Firebase (`google-services.json`, `firebase.json`, `.firebaserc`) and wrote **`firestore.rules`** with **`tests/firestore.rules.test.cjs`**, the 68-test emulator suite covering it. The complete **Room layer**: `SessionDao`, `WorkoutSessionEntity`, `RepScoreEntity`, `CalibrationProfileDao`/`Entity`, `RoomSessionRepository`, `RoomCalibrationRepository`, and the schema JSON. All five **Firestore data sources** (Workout, Friend, GhostScore, UserProfile, `FirestoreWorkoutSession`) and `SyncingSessionRepository`, the Room-first write path. `AuthRepository`/`FirebaseAuthRepository`, `RepositoryModule`. Added the GitHub Actions CI workflow. | 46 |
+| **Xue Li (Claire)** | **Form scoring and replay.** Created and owns `FormScorer` -- the depth/tempo/consistency rule, its calibration gating, the one-sided consistency deviation -- with `FormScorerTest` (12 tests). Created `SessionReplayer` and `SessionReplayerTest`, the deterministic re-run recovering each repetition's time window and motion curve from a stored session. Built the Motion Replay presentation layer (`MotionReplayUiModels`, `MotionReplayMapperTest`); contributed to `SessionDetailScreen`, `PushupRepDetector`, `PushupFrameProcessor`. | 33 |
 
-| Member | Components owned | Key files (by commits touching them) | Commits | Notes |
-| :------------ | :---------------- | :------------------------------------------- | :------ | :-------------- |
-| Mohit Nanda | Motion engine, calibration, trace corpus, test suite, push-up camera workout | `RepDetector` (6), `CalibrationProfile` (5), `LiveWorkoutViewModel` (7), `PushupWorkoutViewModel` (5) | 77 | `[CONFIRM]` Heaviest in JVM tests (59 commits touching `app/src/test`) and `engine` (24) |
-| Henrico Leodra | Navigation, authentication UI, Home, Profile, charts | `NavGraph` (22), `ProfileScreen` (11), `AuthViewModel` (8), `HomeScreen` (6), `SignUpScreen` (6) | 67 | `[CONFIRM]` Largest UI footprint by a wide margin (164 touches under `ui/`) |
-| Qichong Chen (Jasper) | Friends, leaderboard read path, build and manifest configuration | `FriendsScreen` (6), `LeaderboardViewModel` (4), `FriendsViewModel` (3), `FirestoreFriendRepository` (3) | 46 | `[CONFIRM]` Also 21 touches to `res/` and the manifest, 17 to build files |
-| Xiaonuo Jia (Lisa) | Room persistence, Firestore workout sync, DI modules, schema migrations | `RoomSessionRepository` (8), `SyncingSessionRepository` (7), `SessionDao` (5), `RepMateDatabase` (5) | 46 | `[CONFIRM]` Almost entirely data layer: 59 touches under `data/` |
-| Xue Li (Claire) | Form scoring, session detail and motion replay presentation | `FormScorer` (4), `SessionDetailScreen` (2), `MotionReplayUiModels` (2), `PushupRepDetector` (1) | 33 | `[CONFIRM]` Spread across `engine` (7), `ui` (10) and JVM tests (9) |
-
-**Reading the commit counts fairly.** Commit counts reward granular committers and penalise
-people who squash. They are reported because they are objective, not because they measure
-effort. "Components owned" is the column that matters, and the one each member should check
-hardest.
+Derived from authorship, so pair programming, review, design and device testing do not
+appear, and commit counts reward granular committers. The middle column is what matters.
 
 \newpage
 
