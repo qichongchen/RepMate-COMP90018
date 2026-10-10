@@ -178,7 +178,7 @@ Appendix C of the report carries the full table with evidence for each.
 | Henrico Leodra | The presentation layer — navigation, theme, components and most screens; authentication and display names; guest history migration; the Ghost Duel screens | [@henricoleodra](https://github.com/henricoleodra) |
 | Qichong Chen (Jasper) | Project foundations: the Gradle build, `MainActivity`, the Room database class and migrations; the Friends feature; the leaderboard read path | [@qichongchen](https://github.com/qichongchen) |
 | Xiaonuo Jia (Lisa) | The Room layer, all five Firestore data sources, the Room-first sync path, `firestore.rules` and its 68-test suite; Firebase setup and CI | [@Lisa-Jia07](https://github.com/Lisa-Jia07) |
-| Xue Li (Claire) | Form scoring and its calibration gating, deterministic session replay, and the Motion Replay presentation layer | [@Claire-59](https://github.com/Claire-59) |
+   | Xue Li (Claire) | Form scoring and its calibration gating, deterministic session replay, the Motion Replay presentation layer, and real depth-based push-up scoring | [@Claire-59](https://github.com/Claire-59) |
 
 Roles are derived from git — what each member **created and then maintained**, recoverable with `git log main --diff-filter=A` under `.mailmap`. §4 of the report gives the same breakdown file by file. Handles for Mohit and Henrico are exact (GitHub noreply addresses); the other three are the names used in commit authorship.
 
