@@ -9,10 +9,9 @@ On-device motion sensing for repetition counting and form scoring, with per-user
 ![targetSdk](https://img.shields.io/badge/targetSdk-37-blue)
 ![tests](https://img.shields.io/badge/tests-426%20JVM%20%7C%2068%20rules%20%7C%2047%20instrumented-success)
 
-> **[FILL: hero image]**
-> Use a single screenshot of the **Live Workout** screen mid-set, at the moment the rep counter and the live form score are both populated. That one frame shows what the app actually does; Home shows only buttons.
-> Capture at device native resolution, then downscale the committed file to **≈400 px wide**. GitHub renders README images at about 890 px of content width, so a full-height 1080×2400 portrait renders as a column of unreadable text four screens tall.
-> A GIF is better than a still if you can get one: 8–10 s of a real set, **480 px wide, ≤5 MB, ≤15 fps**, showing the counter incrementing. The counter is the subject, not the motion.
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="RepMate counting a squat set, with the per-rep form reason shown beneath the counter" width="400">
+</p>
 
 ## What it does
 
@@ -24,16 +23,16 @@ The part that is not trivial is that none of the thresholds involved are univers
 
 > **[FILL: YouTube link to the demo video]**
 
-> **[FILL: the six screenshots referenced in the table below]** — commit them to `docs/screenshots/`.
-
 | | | |
 |---|---|---|
-| ![Home](docs/screenshots/home.png)<br/>**Home** — pick an exercise, calibration state shown | ![Live workout](docs/screenshots/live-workout.png)<br/>**Live Workout** — rep count, per-rep score, haptic and spoken toggles | ![Push-up workout](docs/screenshots/pushup-workout.png)<br/>**Push-up Workout** — front camera, pose overlay, counting-gate hint |
-| ![Motion replay](docs/screenshots/motion-replay.png)<br/>**Motion Replay** — each rep's smoothed curve against the calibration band | ![Leaderboard](docs/screenshots/leaderboard.png)<br/>**Leaderboard** — global and friends tabs | ![Ghost duel](docs/screenshots/ghost-duel.png)<br/>**Ghost Duel** — your best session against a friend's |
+| ![Home](docs/screenshots/home.png)<br/>**Home** — exercise picker, last session, live global top three | ![Live workout](docs/screenshots/live-workout.png)<br/>**Live Workout** — rep count, the reason for the last rep's score, feedback toggles | ![Push-up workout](docs/screenshots/pushup-workout.png)<br/>**Push-up Workout** — camera preview with the person gate holding the count, and the live phone-motion readout |
+| ![Motion replay](docs/screenshots/motion-replay.png)<br/>**Motion Replay** — this rep's smoothed curve falling short of the calibration band | ![Session detail](docs/screenshots/session-detail.png)<br/>**Session Detail** — score and depth per rep across the set | ![Leaderboard](docs/screenshots/leaderboard.png)<br/>**Leaderboard** — global tab, live from Firestore |
 
-Capture all six on the **same device, at the same resolution, in the same theme**, with a clean status bar — mixed device frames in one grid look careless. The submitted set was taken on a Pixel 10a at 1080×2400. Downscale each file to **≈280 px wide** before committing: three of those plus table padding fills the content width exactly, which makes the grid one screen of scroll instead of six.
+> **How these were captured, stated plainly.** All six come from the `Pixel_10a` AVD at 1080×2400, downscaled to 280 px. The app, the engine and the leaderboard data are real, but the squat reps were produced by driving the emulator's accelerometer through the console (`adb emu sensor set acceleration`) rather than by a person squatting. That is why the Motion Replay curve is a clean trapezoid instead of the rounded shape a real rep produces, and why the push-up screen shows the "no person detected" gate against the emulator's virtual scene rather than a counted rep.
+>
+> **Re-shoot these on a physical device before submitting.** The gap matters most for Motion Replay, which is the one screen whose whole point is the shape of a real signal.
 
-The two screens worth the most marks per pixel are **Push-up Workout** (the camera path, with the "hold the phone still" hint visible) and **Motion Replay** (nothing else in the submission shows the signal the counting is actually done on). If you only have time to stage two carefully, stage those.
+Two screens are not in the grid because the emulator cannot produce them: **Ghost Duel** needs a friend who has published a best score, and the **friends leaderboard** needs the same. Both show their empty state here, and [`ghost-duel.png`](docs/screenshots/ghost-duel.png) is committed for reference. [`history.png`](docs/screenshots/history.png) is committed too — it shows a zero-rep session rendering as "–" rather than a bold 0.0.
 
 ## Features
 
