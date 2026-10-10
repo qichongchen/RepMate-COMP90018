@@ -74,8 +74,9 @@ private val ONBOARDING_PAGES =
         OnboardingPage(
             title = "Score your form",
             body =
-                "Squats and jumping jacks are scored on range of motion, tempo and consistency. " +
-                    "Push-up scoring is coming soon.",
+                "Every rep is scored on range of motion, tempo and consistency. " +
+                    "Squats and jumping jacks are compared with your calibration, " +
+                    "and push-ups with your own best rep.",
             icon = { modifier -> ChartLineIcon(modifier) },
         ),
         OnboardingPage(

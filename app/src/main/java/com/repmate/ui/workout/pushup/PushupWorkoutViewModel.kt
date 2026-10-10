@@ -106,12 +106,14 @@ data class PushupWorkoutUiState(
  * detector is reset when the camera is switched or a long block ends, and a rep already counted
  * must survive that.
  *
- * ## No calibration
- * Unlike squat and jumping jack, push-ups skip calibration entirely for now (see
- * `CalibrationUiState.Unsupported` and Home's routing in `NavGraph.kt`): there is no per-user
- * profile yet to score depth or tempo against, so every counted rep is recorded with a neutral,
- * un-scored [RepScore] rather than passed through `FormScorer`. That is a placeholder, not a
- * design decision -- per-user calibration for push-ups is the intended replacement.
+ * ## No calibration, scored against the session's own best rep
+ * Unlike squat and jumping jack, push-ups skip calibration entirely (see
+ * `CalibrationUiState.Unsupported` and Home's routing in `NavGraph.kt`), so there is no per-user
+ * profile for `FormScorer` to compare against and push-up reps do not go through it. Instead
+ * `onRepCompleted` scores each rep out of 10 itself: depth is the elbow bend relative to the
+ * deepest rep so far this session (the first rep sets the reference), tempo is the time since the
+ * previous rep against fixed limits, and consistency drops the score once the session's average
+ * depth shortfall grows. A rep whose depth could not be measured is not penalised for depth.
  */
 @HiltViewModel
 class PushupWorkoutViewModel
